@@ -1,0 +1,11 @@
+{
+  "id": "hcl-installer",
+  "name": "安装器",
+  "version": "1.0.0",
+  "author": "HyaLab",
+  "description": "安装 Minecraft 版本、Fabric / Forge / NeoForge 加载器与 .mrpack 整合包。",
+  "kind": "install-module",
+  "capabilities": ["vanilla", "loader", "modpack"],
+  "entry": "lib/installer_module.dart",
+  "defaultEnabled": true
+}

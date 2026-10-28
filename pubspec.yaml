@@ -1,0 +1,38 @@
+name: hydrogen_chloride_launcher
+description: "Hydrogen Chloride Launcher - a cross-platform Java program launcher"
+publish_to: 'none'
+version: 0.1.0-alpha.1+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  archive: ^4.0.7
+  collection: ^1.19.1
+  crypto: ^3.0.6
+  file_selector: ^1.1.0
+  http: ^1.6.0
+  http_parser: ^4.1.2
+  package_info_plus: ^10.2.2
+  path: ^1.9.1
+  xml: ^6.6.1
+  url_launcher: ^6.3.3
+  window_manager: ^0.5.2
+  fluent_ui: ^4.17.0
+  # Install capabilities live in a folder that can be switched off.
+  hcl_plugin_installer:
+    path: plugins/hcl-plugin-installer
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Maple Mono NF CN
+      fonts:
+        - asset: assets/fonts/MapleMono-NF-CN-Regular.ttf

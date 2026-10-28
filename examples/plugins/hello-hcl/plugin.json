@@ -1,0 +1,78 @@
+{
+  "id": "hello-hcl",
+  "name": "Hello HCL",
+  "version": "1.0.0",
+  "author": "HyaLab",
+  "description": "可安装的示例插件：展示声明式页面、列表、提示块与受控动作。",
+  "minLauncherVersion": "0.1.0",
+  "permissions": ["openUrl"],
+  "contributes": {
+    "pages": [
+      {
+        "id": "hello",
+        "title": "Hello HCL",
+        "icon": "auto_awesome",
+        "widgets": [
+          {
+            "type": "heading",
+            "text": "欢迎使用 Hydrogen Chloride Launcher"
+          },
+          {
+            "type": "paragraph",
+            "text": "这个页面完全由 plugin.json 中的声明式组件渲染。启动器不会执行插件代码，也不会把账户、库或文件系统暴露给插件。"
+          },
+          {
+            "type": "divider"
+          },
+          {
+            "type": "list",
+            "items": [
+              "插件目录：plugins/hello-hcl/",
+              "清单文件：plugin.json",
+              "动作需要声明对应权限",
+              "页面组件由启动器统一渲染"
+            ]
+          },
+          {
+            "type": "callout",
+            "tone": "info",
+            "text": "Alpha 只支持声明式页面。动态代码、文件读写和网络请求留待后续的沙箱宿主。"
+          },
+          {
+            "type": "code",
+            "text": "flutter run -d linux"
+          },
+          {
+            "type": "row",
+            "children": [
+              {
+                "type": "button",
+                "label": "查看 GitHub",
+                "action": {
+                  "type": "openUrl",
+                  "url": "https://github.com/HyaLab/HydrogenChlorideLauncher"
+                }
+              },
+              {
+                "type": "button",
+                "label": "打开插件管理",
+                "action": {
+                  "type": "openSettings",
+                  "section": "plugins"
+                }
+              },
+              {
+                "type": "button",
+                "label": "显示消息",
+                "action": {
+                  "type": "showMessage",
+                  "text": "这是由插件按钮触发的启动器消息。"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

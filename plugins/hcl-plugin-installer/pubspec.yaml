@@ -1,0 +1,14 @@
+name: hcl_plugin_installer
+description: Install module for Hydrogen Chloride Launcher (versions, loaders, modpacks).
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ^3.13.5
+
+# Intentionally dependency-free apart from the Dart SDK and the launcher's own
+# packages passed in at call time: the module must never import the host app.
+dependencies:
+  crypto: ^3.0.6
+  http: ^1.6.0
+  path: ^1.9.1
