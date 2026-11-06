@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/java_runtime.dart';
 
-/// Pure-Dart Java discovery used when the Rust sidecar is not available.
+/// Pure-Dart Java discovery.
 class JavaScanner {
   JavaScanner._();
 

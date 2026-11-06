@@ -8,6 +8,7 @@ import '../../../../state/app_state.dart';
 import '../../../../theme/fluent_theme.dart';
 import '../../../widgets/charts.dart';
 import '../../../widgets/fluent_widgets.dart';
+import '../../../widgets/hcl_combo_box.dart';
 import '../settings_widgets.dart';
 
 class StatisticsPane extends StatelessWidget {
@@ -351,7 +352,7 @@ class _FilterMenu extends StatelessWidget {
         const SizedBox(width: 6),
         SizedBox(
           width: 128,
-          child: ComboBox<String>(
+          child: HclComboBox<String>(
             value: value,
             items: options
                 .map(

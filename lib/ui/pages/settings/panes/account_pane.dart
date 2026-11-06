@@ -51,10 +51,10 @@ class _AccountPaneState extends State<AccountPane> {
 
   static String _clientIdNote(AppState app) {
     final String current = app.effectiveClientId ?? '';
+    if (current.isEmpty) return '未配置：登录前请填写 Azure 应用 ID';
     if (current == AppInfo.defaultMicrosoftClientId) {
-      return '内置公开 ID（非本启动器所有，来自通用第三方 Minecraft 登录应用）';
+      return '内置 ID：可直接登录；也可换成你自己的 Azure 应用';
     }
-    if (current.isEmpty) return '未配置：登录前请填写或设置环境变量';
     return '自定义 ID：令牌只发给你注册的应用';
   }
 
@@ -266,8 +266,8 @@ class _AccountPaneState extends State<AccountPane> {
         const SizedBox(height: 18),
         SettingsBanner(
           message:
-              '点击「使用设备码登录」，启动器会给出一组代码；'
-              '打开 microsoft.com/link 输入即可完成登录，无需注册 Azure 应用。',
+              '点「使用设备码登录」，启动器会给出一组代码；'
+              '打开 microsoft.com/link 输入即可完成登录。',
         ),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 12),
@@ -290,8 +290,8 @@ class _AccountPaneState extends State<AccountPane> {
           SettingsCard(
             title: 'Azure 应用 client ID',
             description:
-                '默认使用启动器内置的公开 client ID，直接登录即可。'
-                '如需改用你自建的 Azure 应用：账户类型包含个人 Microsoft 账户，'
+                '默认使用内置 client ID，无需配置即可登录。'
+                '也可换成你自己的 Azure 应用：账户类型选「仅个人 Microsoft 账户」，'
                 '并在 Authentication 中开启“Allow public client flows”。',
             children: <Widget>[
               Row(

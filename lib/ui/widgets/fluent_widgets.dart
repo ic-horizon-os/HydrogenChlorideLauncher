@@ -969,6 +969,17 @@ class BottomTaskBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The task updates itself up to ~20×/s; listening here keeps those
+    // ticks from rebuilding the whole shell.
+    return ListenableBuilder(
+      listenable: task,
+      builder: (BuildContext context, Widget? _) {
+        return _build(context);
+      },
+    );
+  }
+
+  Widget _build(BuildContext context) {
     final FluentPalette palette = FluentColors.of(context).palette;
     final Color accent = FluentTheme.of(context).accentColor;
     final bool done = !task.running;
@@ -1098,6 +1109,11 @@ class FluentPage extends StatelessWidget {
 
 /// Slides [child] up from a small offset and fades it in. Applied to page
 /// bodies only, never to headers.
+///
+/// fluent_ui keeps visited tab bodies alive offstage, so without help the
+/// entrance would play exactly once per session. Wrapped in a navigation
+/// shell that provides a [PageEntranceSignal], the entrance restarts every
+/// time the page becomes active.
 class PageBodyEntrance extends StatefulWidget {
   const PageBodyEntrance({
     super.key,
@@ -1128,8 +1144,35 @@ class _PageBodyEntranceState extends State<PageBodyEntrance>
     curve: Curves.easeOutCubic,
   );
 
+  /// The shell transition this page is bound to, if any.
+  Animation<double>? _shell;
+  double _lastShellValue = 1;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Animation<double>? shell = PageEntranceSignal.read(context);
+    if (identical(shell, _shell)) return;
+    _shell?.removeListener(_handleShellTick);
+    _shell = shell;
+    _lastShellValue = shell?.value ?? 1;
+    shell?.addListener(_handleShellTick);
+  }
+
+  /// The shell restarts its transition (the value snaps back toward zero)
+  /// every time its tab is re-activated; replay the entrance in step with it.
+  void _handleShellTick() {
+    final double value = _shell?.value ?? 1;
+    final bool restarted = value < _lastShellValue - 0.05;
+    _lastShellValue = value;
+    if (restarted && !_controller.isAnimating) {
+      _controller.forward(from: 0);
+    }
+  }
+
   @override
   void dispose() {
+    _shell?.removeListener(_handleShellTick);
     _curve.dispose();
     _controller.dispose();
     super.dispose();
@@ -1137,6 +1180,9 @@ class _PageBodyEntranceState extends State<PageBodyEntrance>
 
   @override
   Widget build(BuildContext context) {
+    // The boundary caches the body's display list across the ~320ms of fade
+    // frames, so each frame re-composites one cached layer instead of
+    // re-recording (and repainting) the whole page.
     return FadeTransition(
       opacity: _curve,
       child: SlideTransition(
@@ -1144,8 +1190,30 @@ class _PageBodyEntranceState extends State<PageBodyEntrance>
           begin: Offset(0, widget.offset),
           end: Offset.zero,
         ).animate(_curve),
-        child: widget.child,
+        child: RepaintBoundary(child: widget.child),
       ),
     );
   }
+}
+
+/// Handed down by the navigation shell so [PageBodyEntrance] can replay its
+/// entrance on every activation. The shell itself renders the child
+/// unchanged — headers stay still while bodies animate.
+class PageEntranceSignal extends InheritedWidget {
+  const PageEntranceSignal({
+    super.key,
+    required this.animation,
+    required super.child,
+  });
+
+  /// Restarts (runs 0 -> 1) each time the owning page becomes active.
+  final Animation<double> animation;
+
+  /// Read without registering a dependency: the animation object is held
+  /// directly and watched with a listener instead.
+  static Animation<double>? read(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<PageEntranceSignal>()?.animation;
+
+  @override
+  bool updateShouldNotify(PageEntranceSignal oldWidget) => false;
 }

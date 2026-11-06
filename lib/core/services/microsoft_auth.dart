@@ -10,6 +10,7 @@ import '../config/app_paths.dart';
 import '../models/account.dart';
 import 'loopback_sign_in.dart';
 import 'token_vault.dart';
+import '../constants.dart';
 import '../utils/json_utils.dart';
 
 class DeviceCodeInfo {
@@ -51,8 +52,8 @@ class MicrosoftAuthException implements Exception {
 
 /// Full Microsoft account -> Xbox Live -> XSTS -> Minecraft Services chain.
 ///
-/// Tokens are kept by [TokenVault]: the OS keychain when the `hcl-core`
-/// sidecar can reach it, otherwise the 0600 `account.json` file.
+/// Tokens are kept by [TokenVault]: the OS keychain when it can be
+/// reached, otherwise the 0600 `account.json` file.
 class MicrosoftAuthService extends ChangeNotifier {
   MicrosoftAuthService({
     required this.paths,
@@ -75,10 +76,9 @@ class MicrosoftAuthService extends ChangeNotifier {
   bool get isLoggedIn => _account != null;
   String? get lastError => _lastError;
 
-  /// The shared public client only exists in the legacy Live Connect
-  /// directory, so device code and token exchange must use login.live.com.
-  /// Launchers that ship their own Azure app use the microsoftonline
-  /// endpoints instead; [tokenEndpointFor] picks the right pair.
+  /// The default public client only exists in the legacy Live Connect
+  /// directory, so it must use login.live.com. A user's own Azure app uses the
+  /// Microsoft identity platform (Entra) endpoints instead.
   static const String _liveDeviceCodeEndpoint =
       'https://login.live.com/oauth20_connect.srf';
   static const String _liveTokenEndpoint =
@@ -88,11 +88,8 @@ class MicrosoftAuthService extends ChangeNotifier {
   static const String _entraTokenEndpoint =
       'https://login.microsoftonline.com/consumers/oauth2/v2.0/token';
 
-  static const String publicClientId = '00000000402b5328';
-
-  /// True for the built-in shared client, which speaks Live Connect.
   static bool usesLiveConnect(String clientId) =>
-      clientId.trim() == publicClientId;
+      clientId.trim() == AppInfo.defaultMicrosoftClientId;
 
   static String deviceCodeEndpointFor(String clientId) =>
       usesLiveConnect(clientId)

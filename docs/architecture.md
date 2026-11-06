@@ -137,7 +137,7 @@ LaunchService.start()
 
 ## 6. 平台层（纯 Dart）
 
-原本的 Rust 边车 `hcl-core` 已全部改写为 Dart，构建不再需要 Cargo：
+平台能力全部由 Dart 直接实现，构建不需要额外工具链：
 
 ```text
 CoreBridge
@@ -147,7 +147,7 @@ CoreBridge
   secretGet/Set/Delete → secret-tool（Linux Secret Service）
 ```
 
-`CoreBridge` 的公开 API 保持与旧版一致，所有调用点无需改动。
+`CoreBridge` 的公开 API 保持稳定，所有调用点无需改动。
 
 ## 7. 持久化
 
@@ -207,11 +207,6 @@ flutter build linux --release
 
 # 真实网络与真实 Java 的集成检查（可选）
 HCL_LIVE=1 flutter test test/live_network_test.dart test/live_launch_test.dart
-
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test --manifest-path rust/hcl-core/Cargo.toml
-cargo build --release --manifest-path rust/hcl-core/Cargo.toml
 ```
 
 Windows runner 由 `flutter create` 生成，本轮不构建 Windows 产物。

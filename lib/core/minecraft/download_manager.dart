@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -53,6 +54,8 @@ class DownloadProgress {
   const DownloadProgress({
     required this.completed,
     required this.total,
+    required this.completedOfPending,
+    required this.pendingTotal,
     required this.currentFile,
     required this.bytesDone,
     required this.bytesTotal,
@@ -60,13 +63,30 @@ class DownloadProgress {
 
   final int completed;
   final int total;
+
+  /// Files downloaded this run, excluding ones reused from disk.
+  final int completedOfPending;
+
+  /// Files that actually needed downloading.
+  final int pendingTotal;
   final String currentFile;
   final int bytesDone;
   final int bytesTotal;
 
+  /// Byte-weighted when sizes are known, floored by the file count so a
+  /// batch with many unknown sizes still marches steadily to 100% instead
+  /// of stalling near zero.
   double get fraction {
-    if (bytesTotal > 0) return (bytesDone / bytesTotal).clamp(0.0, 1.0);
-    return total == 0 ? 0 : (completed / total).clamp(0.0, 1.0);
+    double byBytes = 0;
+    if (bytesTotal > 0) byBytes = bytesDone / bytesTotal;
+    double byCount = 0;
+    if (pendingTotal > 0) {
+      byCount = completedOfPending / pendingTotal;
+    } else if (total > 0) {
+      // Nothing needed downloading; the batch is done.
+      byCount = 1;
+    }
+    return math.max(byBytes, byCount).clamp(0.0, 1.0);
   }
 }
 
@@ -107,7 +127,8 @@ class DownloadManager {
   final Duration timeout;
 
   /// Runs [requests] with bounded concurrency. Progress is reported through
-  /// [onProgress] after each file and repeatedly while streaming.
+  /// [onProgress] after each file and repeatedly while streaming, coalesced
+  /// so the UI receives at most one update per ~60 ms per batch.
   Future<DownloadBatchResult> run(
     List<DownloadRequest> requests, {
     void Function(DownloadProgress progress)? onProgress,
@@ -125,6 +146,7 @@ class DownloadManager {
 
     int completed = reused;
     final int total = requests.length;
+    final int pendingTotal = pending.length;
     int bytesDone = 0;
     final int bytesTotal = pending.fold(
       0,
@@ -132,15 +154,38 @@ class DownloadManager {
     );
     final List<DownloadFailure> failures = <DownloadFailure>[];
     final String currentFile = pending.isEmpty ? '' : pending.first.name;
-    onProgress?.call(
-      DownloadProgress(
-        completed: completed,
-        total: total,
-        currentFile: currentFile,
-        bytesDone: 0,
-        bytesTotal: bytesTotal,
-      ),
-    );
+
+    /// Bytes written so far by each in-flight download. Workers report on top
+    /// of this plus [bytesDone] so concurrent files accumulate instead of
+    /// each overwriting the bar with its own snapshot.
+    final Map<DownloadRequest, int> inFlight = <DownloadRequest, int>{};
+
+    DateTime lastEmit = DateTime.now();
+    void emit({required String file, bool force = false}) {
+      final DateTime now = DateTime.now();
+      if (!force &&
+          now.difference(lastEmit) < const Duration(milliseconds: 60)) {
+        return;
+      }
+      lastEmit = now;
+      int inFlightBytes = 0;
+      for (final int written in inFlight.values) {
+        inFlightBytes += written;
+      }
+      onProgress?.call(
+        DownloadProgress(
+          completed: completed,
+          total: total,
+          completedOfPending: completed - reused,
+          pendingTotal: pendingTotal,
+          currentFile: file,
+          bytesDone: bytesDone + inFlightBytes,
+          bytesTotal: bytesTotal,
+        ),
+      );
+    }
+
+    emit(file: currentFile, force: true);
 
     final _Queue queue = _Queue(pending);
     Future<void> worker() async {
@@ -149,29 +194,21 @@ class DownloadManager {
         final DownloadRequest? request = queue.next();
         if (request == null) return;
         try {
-          await _download(request, (int written) {
-            onProgress?.call(
-              DownloadProgress(
-                completed: completed,
-                total: total,
-                currentFile: request.name,
-                bytesDone: bytesDone + written,
-                bytesTotal: bytesTotal,
-              ),
-            );
+          int written = 0;
+          await _download(request, (int chunkWritten) {
+            written = chunkWritten;
+            inFlight[request] = chunkWritten;
+            emit(file: request.name);
           });
-          bytesDone += request.size ?? 0;
+          // Files without metadata size still contribute their real byte
+          // count, so the byte fraction does not stall when some sizes are
+          // unknown.
+          inFlight.remove(request);
+          bytesDone += request.size ?? written;
           completed++;
-          onProgress?.call(
-            DownloadProgress(
-              completed: completed,
-              total: total,
-              currentFile: request.name,
-              bytesDone: bytesDone,
-              bytesTotal: bytesTotal,
-            ),
-          );
+          emit(file: request.name, force: true);
         } on Object catch (error) {
+          inFlight.remove(request);
           failures.add(DownloadFailure(request, error));
         }
       }

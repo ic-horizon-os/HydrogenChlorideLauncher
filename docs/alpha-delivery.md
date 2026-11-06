@@ -8,7 +8,7 @@
 
 | 交付要求 | 位置 |
 | --- | --- |
-| Alpha 版本内容 | `lib/`、`linux/`、`windows/`、`rust/hcl-core/` |
+| Alpha 版本内容 | `lib/`、`linux/`、`windows/` |
 | 插件开发文档 | `docs/plugin-development.md` |
 | 快速使用 | `docs/quick-start.md` |
 | 架构与边界说明 | `docs/architecture.md` |
@@ -25,7 +25,7 @@
 
 | 要求 | 状态 | 说明 |
 | --- | --- | --- |
-| Flutter + Dart + Rust | 已实现 | Flutter 3.47.7 / Dart 3.13.5 / Rust 1.98.1 |
+| Flutter + Dart（纯 Dart 实现） | 已实现 | Flutter 3.47.7 / Dart 3.13.5 |
 | Windows / Linux | 源码就绪 | Linux 已构建验证；Windows runner 已生成，本轮未构建 |
 | Java 程序启动（选择 Java 版本） | 已实现 | 真实下载版本与资源、组装 classpath、启动 Java 子进程；Java 发现、选择、内存/JVM 参数生效，缺失时可下载 Mojang JRE |
 | 自定义程序启动 | 已实现 | 通过“添加自定义程序”加入；按配置的可执行文件与参数启动进程 |
@@ -68,7 +68,7 @@
 - 游戏下载（版本 JSON、客户端、libraries、natives、资源）、真实 Java 启动。
 - Fabric/Forge/NeoForge 安装、OptiFine 导入、`.mrpack` 整合包。
 - Modrinth 搜索与安装、RSS/Atom 订阅、世界修复、崩溃规则、下载源切换、自动更新、皮肤上传。
-- Rust `hcl-core`：Java 扫描、目录占用、SHA-256；Dart 回退。
+- 平台能力纯 Dart 实现：Java 扫描、目录占用、SHA-256。
 - 版本目录扫描、存储占用、最后启动时间。
 - 设置、账户、库、会话、订阅、插件状态持久化。
 - 统计聚合与图表、插件清单校验与声明式页面渲染。
@@ -88,7 +88,7 @@
 ## 4. 验证记录
 
 验证环境：`192.168.2.57`（Windows 主机上的 WSL2，Ubuntu 24.04.1，16 核 / 15 GB）。  
-Flutter 3.47.7、Dart 3.13.5、fluent_ui 4.17.0、clang 18.1.3、CMake 3.28.3、ninja 1.11.1、Rust 1.98.1。
+Flutter 3.47.7、Dart 3.13.5、fluent_ui 4.17.0、clang 18.1.3、CMake 3.28.3、ninja 1.11.1。
 
 | 检查 | 结果 |
 | --- | --- |
@@ -97,12 +97,8 @@ Flutter 3.47.7、Dart 3.13.5、fluent_ui 4.17.0、clang 18.1.3、CMake 3.28.3、
 | `flutter test` | 见本轮验证结果（含版本/参数解析、下载源、Java 选择、RSS、崩溃规则、NBT、钥匙串回退、Modrinth 映射） |
 | `HCL_LIVE=1 flutter test test/live_*.dart` | 真实网络与真实 Java：Mojang 安装、Modrinth、RSS、JRE 下载、Minecraft 1.20.1 启动、Fabric 安装 |
 | `flutter build linux --release` | 见本轮验证结果 |
-| `cargo fmt --all -- --check` | 通过 |
-| `cargo clippy --all-targets -- -D warnings` | 通过 |
-| `cargo test` | 9 个测试通过（含钥匙串账户名校验） |
-| `cargo build --release` | 成功 |
 | `tool/screenshots_test.dart --update-goldens` | 13 张页面截图生成并通过 |
-| Rust 边车识别 | Java 设置页显示 `Rust hcl-core`，说明二进制被真实调用 |
+| 纯 Dart 后端 | Java 设置页显示 `Dart` 后端 |
 
 测试覆盖：设置序列化/边界、Java 版本解析、插件清单/安装/启停/卸载/版本兼容、统计聚合与筛选、微软设备码/轮询/慢速/错误映射/刷新、界面导航冒烟、未登录启动门禁。
 
@@ -110,7 +106,6 @@ Flutter 3.47.7、Dart 3.13.5、fluent_ui 4.17.0、clang 18.1.3、CMake 3.28.3、
 
 ```bash
 flutter pub get
-cargo build --release --manifest-path rust/hcl-core/Cargo.toml
 flutter run -d linux
 ```
 

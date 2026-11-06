@@ -11,6 +11,7 @@ import '../../../../state/app_state.dart';
 import '../../../../theme/acrylic_background.dart';
 import '../../../../theme/fluent_theme.dart';
 import '../../../widgets/fluent_widgets.dart';
+import '../../../widgets/hcl_combo_box.dart';
 import '../settings_widgets.dart';
 
 const List<int> _accentPalette = <int>[
@@ -116,7 +117,7 @@ class _PersonalizationPaneState extends State<PersonalizationPane> {
               leading: _SettingIcon(icon: FluentIcons.brightness),
               trailing: SizedBox(
                 width: 150,
-                child: ComboBox<AppThemeMode>(
+                child: HclComboBox<AppThemeMode>(
                   value: app.settings.themeMode,
                   items: const <ComboBoxItem<AppThemeMode>>[
                     ComboBoxItem<AppThemeMode>(
@@ -322,7 +323,7 @@ class _PersonalizationPaneState extends State<PersonalizationPane> {
                 leading: _SettingIcon(icon: FluentIcons.brightness),
                 trailing: SizedBox(
                   width: 158,
-                  child: ComboBox<BackgroundBlurMode>(
+                  child: HclComboBox<BackgroundBlurMode>(
                     value: app.settings.backgroundBlurMode,
                     items: const <ComboBoxItem<BackgroundBlurMode>>[
                       ComboBoxItem<BackgroundBlurMode>(

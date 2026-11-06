@@ -88,6 +88,11 @@ class _HomeShellState extends State<HomeShell> {
               app: app,
               onOpenSettings: () => app.openSettings(),
             ),
+            // Draw no shell-level transition: headers must stay exactly where
+            // they are on tab switches. The animation object is handed down so
+            // each page's PageBodyEntrance can replay on every activation.
+            transitionBuilder: (Widget child, Animation<double> animation) =>
+                PageEntranceSignal(animation: animation, child: child),
             // Tab switching has no shell-level animation: each page keeps its
             // header still and slides only its body in (see PageBodyEntrance).
             pane: NavigationPane(
@@ -163,18 +168,26 @@ class _HomeShellState extends State<HomeShell> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: BottomTaskBar(
-                task: app.activeTask!,
-                onDismiss: () => app.dismissTask(app.activeTask!),
+              // Without a boundary, every progress refresh would dirty the
+              // whole Stack and re-record the entire app display list.
+              child: RepaintBoundary(
+                child: BottomTaskBar(
+                  task: app.activeTask!,
+                  onDismiss: () => app.dismissTask(app.activeTask!),
+                ),
               ),
             ),
           Positioned.fill(
             child: IgnorePointer(
-              child: _SlidingNavPill(
-                key: const ValueKey<String>('nav-pill'),
-                tabKeys: _tabKeys,
-                selected: HomeTab.values.indexOf(app.tab),
-                hostKey: _navStackKey,
+              // Same: the pill repaints per frame while sliding; keep that
+              // from re-recording the navigation view beneath it.
+              child: RepaintBoundary(
+                child: _SlidingNavPill(
+                  key: const ValueKey<String>('nav-pill'),
+                  tabKeys: _tabKeys,
+                  selected: HomeTab.values.indexOf(app.tab),
+                  hostKey: _navStackKey,
+                ),
               ),
             ),
           ),

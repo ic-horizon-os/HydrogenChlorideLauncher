@@ -50,7 +50,7 @@ Future<void> showAboutHclDialog(BuildContext context) {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Alpha ${AppInfo.version} · Flutter + Dart + Rust',
+                    'Alpha ${AppInfo.version} · Flutter + Dart',
                     style: TextStyle(
                       color: palette.textSecondary,
                       fontSize: 12,
@@ -126,7 +126,7 @@ Future<void> showAboutHclDialog(BuildContext context) {
               dense: true,
             ),
             MetaPill(label: 'Dart 3.13', icon: Icons.code, dense: true),
-            MetaPill(label: 'Rust hcl-core', icon: Icons.memory, dense: true),
+            MetaPill(label: '纯 Dart 核心', icon: Icons.memory, dense: true),
             MetaPill(
               label: 'GTK 3',
               icon: Icons.desktop_windows_outlined,

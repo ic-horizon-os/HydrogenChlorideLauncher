@@ -129,30 +129,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ),
             const SizedBox(width: 12),
             Expanded(
+              // No key here: keying the scaffold would recreate it (and the
+              // entrance inside) before it plays. Only the pane below is
+              // keyed; Windows 11 settings replaces the page instantly and
+              // plays a single entrance — cheaper than cross-fading two
+              // full scrollable panes.
               child: ScaffoldPage.scrollable(
-                key: ValueKey<SettingsSection>(section),
                 backgroundColor: Colors.transparent,
                 padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 20),
                 children: <Widget>[
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder:
-                        (Widget child, Animation<double> animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.012),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          );
-                        },
-                    child: KeyedSubtree(
-                      key: ValueKey<SettingsSection>(section),
+                  KeyedSubtree(
+                    key: ValueKey<SettingsSection>(section),
+                    child: PageBodyEntrance(
+                      duration: const Duration(milliseconds: 280),
+                      offset: 0.04,
                       child: pane,
                     ),
                   ),

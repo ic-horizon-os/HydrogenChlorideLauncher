@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/material.dart' show Icons;
 
@@ -6,12 +9,15 @@ import '../../../core/models/account.dart';
 import '../../../core/models/app_entry.dart';
 import '../../../core/models/app_settings.dart';
 import '../../../core/services/platform_actions.dart';
+import '../../../core/services/skin_service.dart';
 import '../../../core/utils/format.dart';
 import '../../../state/app_scope.dart';
 import '../../../state/app_state.dart';
 import '../../../theme/acrylic_background.dart';
 import '../../../theme/fluent_theme.dart';
 import '../../widgets/fluent_widgets.dart';
+import '../../widgets/hcl_combo_box.dart';
+import '../../widgets/skin_preview.dart';
 
 class AccountPage extends StatelessWidget {
   const AccountPage({super.key});
@@ -110,6 +116,8 @@ class AccountPage extends StatelessWidget {
                     );
                   },
                 ),
+                const SizedBox(height: 18),
+                _SkinCard(app: app),
                 const SizedBox(height: 18),
                 GlassPanel(
                   child: Column(
@@ -448,6 +456,318 @@ class _Info extends StatelessWidget {
           style: TextStyle(color: palette.textSecondary, fontSize: 10),
         ),
       ],
+    );
+  }
+}
+
+/// 皮肤管理: preview the active profile skin and switch between the
+/// player's own skin, a custom PNG, or another premium player's skin.
+/// Everything becomes the account skin only after an explicit apply.
+class _SkinCard extends StatefulWidget {
+  const _SkinCard({required this.app});
+
+  final AppState app;
+
+  @override
+  State<_SkinCard> createState() => _SkinCardState();
+}
+
+class _SkinCardState extends State<_SkinCard> {
+  final TextEditingController _username = TextEditingController();
+
+  File? _previewFile;
+  String _previewModel = 'classic';
+  String _previewLabel = '';
+  bool _pending = false;
+  bool _busy = false;
+  String _variant = 'classic';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOwn());
+  }
+
+  @override
+  void dispose() {
+    _username.dispose();
+    super.dispose();
+  }
+
+  bool get _authenticated => widget.app.isAuthenticated;
+
+  /// Pulls the logged-in player's current profile skin; falls back to the
+  /// locally cached texture when offline.
+  Future<void> _loadOwn() async {
+    final MinecraftAccount? account = widget.app.auth.account;
+    if (account == null) return;
+    final File? cached = widget.app.skins.cachedSkin(account.uuid);
+    if (cached != null && mounted) {
+      setState(() {
+        _previewFile = cached;
+        _previewLabel = '你的当前皮肤（缓存）';
+        _pending = false;
+      });
+    }
+    await _fetch(
+      () => widget.app.skins.fetchOwnSkin(
+        uuid: account.uuid,
+        name: account.name,
+      ),
+      successLabel: '你的当前皮肤',
+    );
+  }
+
+  Future<void> _loadUser() async {
+    await _fetch(
+      () => widget.app.skins.fetchUserSkin(_username.text),
+      successLabel: '${_username.text.trim()} 的皮肤',
+    );
+  }
+
+  Future<void> _fetch(
+    Future<FetchedSkin> Function() task, {
+    required String successLabel,
+  }) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final FetchedSkin fetched = await task();
+      if (!mounted) return;
+      setState(() {
+        _previewFile = fetched.file;
+        _previewModel = fetched.model;
+        _previewLabel = successLabel;
+        _pending = false;
+        _busy = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showAppMessage(context, '拉取皮肤失败：$error');
+    }
+  }
+
+  Future<void> _pickCustom() async {
+    final XFile? file = await openFile(
+      acceptedTypeGroups: const <XTypeGroup>[
+        XTypeGroup(label: '皮肤图片', extensions: <String>['png']),
+      ],
+    );
+    if (file == null) return;
+    if (!mounted) return;
+    if (!file.path.toLowerCase().endsWith('.png')) {
+      showAppMessage(context, 'Minecraft 只接受 PNG 皮肤。');
+      return;
+    }
+    setState(() {
+      _previewFile = File(file.path);
+      _previewModel = _variant;
+      _previewLabel = '自定义皮肤（${_variant == 'slim' ? '纤细' : '经典'}）';
+      _pending = true;
+    });
+  }
+
+  Future<void> _applyPreview() async {
+    final File? file = _previewFile;
+    if (file == null || _busy) return;
+    if (!_authenticated) {
+      showAppMessage(context, '请先登录 Microsoft 账户，再应用皮肤。');
+      return;
+    }
+    setState(() => _busy = true);
+    final String? error = await widget.app.uploadSkin(
+      file,
+      variant: _previewModel == 'slim' ? 'slim' : 'classic',
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _pending = false;
+    });
+    showAppMessage(context, error ?? '皮肤已应用到账户，重新进入游戏后生效。');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final FluentPalette palette = FluentColors.of(context).palette;
+    return GlassPanel(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.palette_outlined, size: 15, color: palette.accent),
+              const SizedBox(width: 8),
+              Text(
+                '皮肤',
+                style: TextStyle(
+                  color: palette.textPrimary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (_previewLabel.isNotEmpty)
+                Text(
+                  _previewLabel,
+                  style: TextStyle(color: palette.textTertiary, fontSize: 11),
+                ),
+              const Spacer(),
+              if (_pending)
+                MetaPill(
+                  label: '未应用',
+                  icon: Icons.priority_high_rounded,
+                  color: palette.warning,
+                  dense: true,
+                )
+              else if (_authenticated)
+                MetaPill(
+                  label: '与账户同步',
+                  icon: Icons.check_circle_outline,
+                  color: palette.success,
+                  dense: true,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: palette.subtleFill,
+                  borderRadius: BorderRadius.circular(FluentTokens.radius),
+                  border: Border.all(color: palette.border),
+                ),
+                child: SkinPreview(
+                  file: _previewFile,
+                  model: _previewModel,
+                  height: 216,
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Text(
+                          '手臂模型',
+                          style: TextStyle(
+                            color: palette.textSecondary,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 130,
+                          child: HclComboBox<String>(
+                            value: _variant,
+                            items: const <ComboBoxItem<String>>[
+                              ComboBoxItem<String>(
+                                value: 'classic',
+                                child: Text('经典'),
+                              ),
+                              ComboBoxItem<String>(
+                                value: 'slim',
+                                child: Text('纤细'),
+                              ),
+                            ],
+                            onChanged: (String? value) {
+                              if (value == null) return;
+                              setState(() => _variant = value);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        FluentButton(
+                          label: '使用个人皮肤',
+                          icon: Icons.person_outline,
+                          dense: true,
+                          loading: _busy,
+                          onPressed: _busy ? null : _loadOwn,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextBox(
+                            controller: _username,
+                            placeholder: '正版玩家名，如 Notch',
+                            enabled: !_busy,
+                            onSubmitted: (_) => _loadUser(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FluentButton(
+                          label: '使用该玩家的皮肤',
+                          icon: Icons.groups_2_outlined,
+                          dense: true,
+                          onPressed: _busy
+                              ? null
+                              : () {
+                                  if (_username.text.trim().isEmpty) {
+                                    showAppMessage(context, '请输入玩家名。');
+                                    return;
+                                  }
+                                  _loadUser();
+                                },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        FluentButton(
+                          label: '上传自定义皮肤',
+                          icon: Icons.upload_file_outlined,
+                          dense: true,
+                          onPressed: _busy ? null : _pickCustom,
+                        ),
+                        const Spacer(),
+                        if (_pending) ...<Widget>[
+                          Text(
+                            '预览中的皮肤尚未生效',
+                            style: TextStyle(
+                              color: palette.warning,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FluentButton(
+                            label: '应用到账户',
+                            icon: Icons.cloud_upload_outlined,
+                            style: FluentButtonStyle.primary,
+                            dense: true,
+                            loading: _busy,
+                            onPressed: _busy ? null : _applyPreview,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '「应用到账户」会把皮肤上传到 Microsoft 账户（Mojang 档案），'
+                      '正版与离线实例进入游戏后均使用该皮肤。',
+                      style: TextStyle(
+                        color: palette.textTertiary,
+                        fontSize: 10.5,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

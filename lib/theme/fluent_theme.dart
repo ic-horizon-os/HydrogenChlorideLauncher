@@ -104,10 +104,24 @@ FluentThemeData buildFluentTheme({
     AppThemeMode.system => platformBrightness,
   };
   final bool isDark = brightness == Brightness.dark;
+  // fluent_ui's type ramp tops out at 68/40px, which reads as enormous inside
+  // this launcher's compact 10-13px layout. Scale the ramp down to match.
+  final Typography defaultType = Typography.fromBrightness(brightness: brightness);
+  final Typography typography = Typography.raw(
+    display: defaultType.display?.copyWith(fontSize: 30, height: 1.2),
+    titleLarge: defaultType.titleLarge?.copyWith(fontSize: 20, height: 1.35),
+    title: defaultType.title?.copyWith(fontSize: 16, height: 1.4),
+    subtitle: defaultType.subtitle?.copyWith(fontSize: 14, height: 1.45),
+    bodyLarge: defaultType.bodyLarge?.copyWith(fontSize: 13.5, height: 1.5),
+    bodyStrong: defaultType.bodyStrong?.copyWith(fontSize: 12.5, height: 1.5),
+    body: defaultType.body?.copyWith(fontSize: 12.5, height: 1.5),
+    caption: defaultType.caption?.copyWith(fontSize: 11, height: 1.45),
+  );
   return FluentThemeData(
     brightness: brightness,
     accentColor: settings.accentColor.toAccentColor(),
     fontFamily: 'Segoe UI',
+    typography: typography,
     scaffoldBackgroundColor: Colors.transparent,
     micaBackgroundColor: Colors.transparent,
     acrylicBackgroundColor: Colors.transparent,

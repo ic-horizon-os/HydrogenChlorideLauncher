@@ -10,6 +10,7 @@ import '../../../../state/app_scope.dart';
 import '../../../../state/app_state.dart';
 import '../../../../theme/fluent_theme.dart';
 import '../../../widgets/fluent_widgets.dart';
+import '../../../widgets/hcl_combo_box.dart';
 import '../settings_widgets.dart';
 
 /// Settings → 皮肤. Holds one library of skins shared by every instance.
@@ -150,7 +151,7 @@ class _SkinsPaneState extends State<SkinsPane> {
             const Spacer(),
             SizedBox(
               width: 130,
-              child: ComboBox<String>(
+              child: HclComboBox<String>(
                 value: _variant,
                 isExpanded: true,
                 items: const <ComboBoxItem<String>>[

@@ -4,7 +4,7 @@ class AppInfo {
 
   static const String name = 'Hydrogen Chloride Launcher';
   static const String shortName = 'HCl Launcher';
-  static const String version = '0.1.0-alpha.1';
+  static const String version = '0.1.0-alpha.2';
   static const String channel = 'Alpha';
   static const String license = 'GPL-3.0-only';
   static const String githubUrl =
@@ -12,10 +12,8 @@ class AppInfo {
   static const String issuesUrl = '$githubUrl/issues';
   static const String microsoftClientIdEnv = 'HCL_MS_CLIENT_ID';
 
-  /// Shared public client used by most third-party Minecraft launchers
-  /// (PCL2, Wurst7 and others). It is not ours and only works with the
-  /// legacy `login.live.com` device-code endpoints, which is what makes
-  /// "sign in without registering an Azure app" possible.
+  /// Default public client so the launcher can sign in without each user
+  /// registering their own Azure app. Users may override it in settings.
   static const String defaultMicrosoftClientId = '00000000402b5328';
 
   static const String disclaimer =

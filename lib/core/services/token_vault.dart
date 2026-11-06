@@ -10,10 +10,9 @@ import 'core_bridge.dart';
 
 /// Stores the Minecraft account token bundle.
 ///
-/// The preferred backend is the OS credential store reached through the
-/// `hcl-core` sidecar (`secret-tool` on Linux, DPAPI on Windows). When that is
-/// unavailable the bundle falls back to the 0600 `account.json` file, so
-/// builds without the sidecar keep working unchanged.
+/// The preferred backend is the OS keychain (`secret-tool` on Linux,
+/// DPAPI on Windows). When that is unavailable the bundle falls back to the
+/// 0600 `account.json` file, so every build keeps working unchanged.
 class TokenVault {
   TokenVault({required this.paths, required this.core, JsonStore? jsonStore})
     : _json = jsonStore ?? const JsonStore();

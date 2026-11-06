@@ -6,8 +6,8 @@
 
 | 平台 | 要求 |
 | --- | --- |
-| Windows 10/11 | Flutter 3.47+、Visual Studio 2022（Desktop development with C++）、Rust 1.98+ |
-| Linux | Flutter 3.47+、Rust 1.98+、`clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev` |
+| Windows 10/11 | Flutter 3.47+、Visual Studio 2022（Desktop development with C++） |
+| Linux | Flutter 3.47+、`clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev` |
 
 Ubuntu/Debian 安装 Linux 桌面依赖：
 
@@ -26,7 +26,6 @@ sudo pacman -S --needed clang cmake ninja pkg-config gtk3
 
 ```bash
 flutter doctor -v
-rustc --version
 ```
 
 `flutter doctor` 中 Android Studio、Chrome 的报错可以忽略，只要 Linux toolchain 或 Visual Studio 一行通过。
@@ -38,22 +37,12 @@ rustc --version
 ```bash
 flutter pub get
 
-# 可选：构建 Rust 边车。不构建时启动器会自动使用纯 Dart 回退。
-cargo build --release --manifest-path rust/hcl-core/Cargo.toml
-
 flutter run -d linux
 # Windows 上：
 flutter run -d windows
 ```
 
-Rust 二进制查找顺序：
-
-1. 环境变量 `HCL_CORE_PATH`
-2. 启动器可执行文件同目录
-3. `rust/hcl-core/target/release` 或 `debug`
-4. 找不到时使用 Dart 回退
-
-点击左上角 **HCL** 标题打开设置，在 **Java 设置** 查看当前使用的后端（`Rust hcl-core` 或 `Dart 回退`）。
+点击左上角 **HCL** 标题打开设置，在 **Java 设置** 查看扫描后端（纯 Dart 实现）。
 
 ## 3. 配置微软登录
 

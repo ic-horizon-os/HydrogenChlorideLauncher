@@ -9,7 +9,7 @@ import 'fluent_theme.dart';
 
 /// Mica/Acrylic style background: a base fill, optional user image, an accent
 /// mesh when no image is selected, Gaussian blur and an acrylic grain layer.
-class AcrylicBackground extends StatelessWidget {
+class AcrylicBackground extends StatefulWidget {
   const AcrylicBackground({
     super.key,
     required this.settings,
@@ -20,78 +20,129 @@ class AcrylicBackground extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final FluentPalette palette = FluentColors.of(context).palette;
-    final String? imagePath = settings.backgroundImagePath;
+  State<AcrylicBackground> createState() => _AcrylicBackgroundState();
+}
+
+class _AcrylicBackgroundState extends State<AcrylicBackground> {
+  // The shell rebuilds on every state tick; probing the filesystem each
+  // build puts synchronous disk I/O on the UI thread. Cache per path.
+  String? _checkedPath;
+  bool _hasImage = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolveImage();
+  }
+
+  @override
+  void didUpdateWidget(covariant AcrylicBackground old) {
+    super.didUpdateWidget(old);
+    if (old.settings.backgroundImagePath !=
+        widget.settings.backgroundImagePath) {
+      _resolveImage();
+    }
+  }
+
+  void _resolveImage() {
+    final String? imagePath = widget.settings.backgroundImagePath;
     final bool hasImage =
         imagePath != null &&
         imagePath.isNotEmpty &&
         File(imagePath).existsSync();
-    final double opacity = settings.backgroundOpacity
+    if (_checkedPath != imagePath || _hasImage != hasImage) {
+      setState(() {
+        _checkedPath = imagePath;
+        _hasImage = hasImage;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final FluentPalette palette = FluentColors.of(context).palette;
+    final String? imagePath = widget.settings.backgroundImagePath;
+    final bool hasImage = _hasImage;
+    final double opacity = widget.settings.backgroundOpacity
         .clamp(0.0, 1.0)
         .toDouble();
+    final bool backgroundBlur = widget.settings.backgroundBlur;
+    final bool acrylicNoise =
+        backgroundBlur &&
+        widget.settings.backgroundBlurMode == BackgroundBlurMode.acrylic;
 
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        ColoredBox(color: palette.background),
-        if (hasImage)
-          Image.file(
-            File(imagePath),
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.medium,
-            errorBuilder:
-                (BuildContext context, Object error, StackTrace? stack) {
-                  return _AccentMesh(
-                    accent: palette.accent,
-                    isDark: palette.isDark,
-                  );
-                },
-          )
-        else
-          _AccentMesh(accent: palette.accent, isDark: palette.isDark),
-        if (settings.backgroundBlur)
-          ClipRect(
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(
-                sigmaX: settings.backgroundBlurSigma,
-                sigmaY: settings.backgroundBlurSigma,
-              ),
-              child: ColoredBox(
-                color: palette.background.withValues(alpha: opacity),
-              ),
-            ),
-          )
-        else
-          ColoredBox(color: palette.background.withValues(alpha: opacity)),
-        if (settings.backgroundBlur &&
-            settings.backgroundBlurMode == BackgroundBlurMode.acrylic)
-          IgnorePointer(
-            child: CustomPaint(
-              painter: _AcrylicNoisePainter(isDark: palette.isDark),
-            ),
-          ),
-        IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[
-                  palette.background.withValues(
-                    alpha: palette.isDark ? 0.42 : 0.5,
+        // Isolate the static backdrop behind its own repaint boundary: every
+        // animated pixel above (page entrances, hovers, progress bars) must
+        // not re-record the image, the 2600-rect noise layer or the gradient
+        // — those only change when the settings themselves change.
+        RepaintBoundary(
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              ColoredBox(color: palette.background),
+              if (hasImage)
+                Image.file(
+                  File(imagePath!),
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder:
+                      (BuildContext context, Object error, StackTrace? stack) {
+                        return _AccentMesh(
+                          accent: palette.accent,
+                          isDark: palette.isDark,
+                        );
+                      },
+                )
+              else
+                _AccentMesh(accent: palette.accent, isDark: palette.isDark),
+              if (backgroundBlur)
+                ClipRect(
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(
+                      sigmaX: widget.settings.backgroundBlurSigma,
+                      sigmaY: widget.settings.backgroundBlurSigma,
+                    ),
+                    child: ColoredBox(
+                      color: palette.background.withValues(alpha: opacity),
+                    ),
                   ),
-                  palette.background.withValues(alpha: 0.06),
-                  palette.background.withValues(
-                    alpha: palette.isDark ? 0.55 : 0.62,
+                )
+              else
+                ColoredBox(color: palette.background.withValues(alpha: opacity)),
+              if (acrylicNoise)
+                IgnorePointer(
+                  child: CustomPaint(
+                    painter: _AcrylicNoisePainter(isDark: palette.isDark),
                   ),
-                ],
-                stops: const <double>[0, 0.55, 1],
+                ),
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[
+                        palette.background.withValues(
+                          alpha: palette.isDark ? 0.42 : 0.5,
+                        ),
+                        palette.background.withValues(alpha: 0.06),
+                        palette.background.withValues(
+                          alpha: palette.isDark ? 0.55 : 0.62,
+                        ),
+                      ],
+                      stops: const <double>[0, 0.55, 1],
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
-        child,
+        // And keep app-content repaints from dirtying the backdrop either.
+        RepaintBoundary(child: widget.child),
       ],
     );
   }

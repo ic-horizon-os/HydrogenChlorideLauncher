@@ -12,6 +12,13 @@ import '../../../state/app_scope.dart';
 import '../../../state/app_state.dart';
 import '../../../theme/fluent_theme.dart';
 import '../../widgets/fluent_widgets.dart';
+import '../../widgets/hcl_combo_box.dart';
+import '../../widgets/version_install_form.dart';
+
+/// Sections of the browse page. The first four are Modrinth categories;
+/// 游戏版本 hosts the vanilla/loader installer that used to live only in
+/// the library's install dialog.
+enum _BrowseSection { mod, modpack, shader, loader, versions }
 
 class BrowsePage extends StatefulWidget {
   const BrowsePage({super.key});
@@ -21,8 +28,10 @@ class BrowsePage extends StatefulWidget {
 }
 
 class _BrowsePageState extends State<BrowsePage> {
+  static const List<_BrowseSection> _sections = _BrowseSection.values;
+
   final TextEditingController _searchController = TextEditingController();
-  BrowseCategory _category = BrowseCategory.mod;
+  _BrowseSection _section = _BrowseSection.mod;
   BrowseSort _sort = BrowseSort.popular;
   String _loader = '全部';
   String _search = '';
@@ -33,6 +42,16 @@ class _BrowsePageState extends State<BrowsePage> {
   String? _error;
   Timer? _debounce;
   int _requestId = 0;
+
+  BrowseCategory get _category => switch (_section) {
+    _BrowseSection.mod => BrowseCategory.mod,
+    _BrowseSection.modpack => BrowseCategory.modpack,
+    _BrowseSection.shader => BrowseCategory.shader,
+    _BrowseSection.loader => BrowseCategory.loader,
+    _BrowseSection.versions => BrowseCategory.mod,
+  };
+
+  bool get _isModrinth => _section != _BrowseSection.versions;
 
   @override
   void initState() {
@@ -49,7 +68,7 @@ class _BrowsePageState extends State<BrowsePage> {
 
   Future<void> _fetchOnline() async {
     final AppState app = AppScope.read(context);
-    if (_category == BrowseCategory.loader) {
+    if (_section == _BrowseSection.loader) {
       setState(() {
         _online = <BrowseItem>[];
         _loading = false;
@@ -91,6 +110,15 @@ class _BrowsePageState extends State<BrowsePage> {
     _debounce = Timer(const Duration(milliseconds: 400), _fetchOnline);
   }
 
+  void _selectSection(_BrowseSection section) {
+    if (section == _section) return;
+    setState(() {
+      _section = section;
+      _loader = '全部';
+    });
+    if (_isModrinth) _fetchOnline();
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppState app = AppScope.of(context);
@@ -102,7 +130,7 @@ class _BrowsePageState extends State<BrowsePage> {
       sort: _sort,
     );
     final bool showDemo =
-        _category == BrowseCategory.loader ||
+        _section == _BrowseSection.loader ||
         (_online.isEmpty &&
             (_error != null || (_fetched && demoItems.isNotEmpty)));
     final List<BrowseItem> items = showDemo ? demoItems : _online;
@@ -131,14 +159,16 @@ class _BrowsePageState extends State<BrowsePage> {
                         ),
                         const SizedBox(width: 10),
                         MetaPill(
-                          label: showDemo ? '示例' : 'Modrinth',
+                          label: _isModrinth
+                              ? (showDemo ? '示例' : 'Modrinth')
+                              : '游戏版本',
                           dense: true,
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '模组、整合包、光影和加载器。',
+                      _sectionDescription,
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12.5,
@@ -148,183 +178,255 @@ class _BrowsePageState extends State<BrowsePage> {
                 ),
               ),
               const SizedBox(width: 20),
-              SizedBox(
-                width: 300,
-                child: TextBox(
-                  controller: _searchController,
-                  placeholder: '搜索项目、作者或标签',
-                  onChanged: (String value) {
-                    setState(() => _search = value);
-                    _scheduleFetch();
-                  },
-                  prefix: Padding(
-                    padding: const EdgeInsetsDirectional.only(start: 10),
-                    child: Icon(
-                      Icons.search,
-                      size: 15,
-                      color: palette.textTertiary,
+              if (_isModrinth)
+                SizedBox(
+                  width: 300,
+                  child: TextBox(
+                    controller: _searchController,
+                    placeholder: '搜索项目、作者或标签',
+                    onChanged: (String value) {
+                      setState(() => _search = value);
+                      _scheduleFetch();
+                    },
+                    prefix: Padding(
+                      padding: const EdgeInsetsDirectional.only(start: 10),
+                      child: Icon(
+                        Icons.search,
+                        size: 15,
+                        color: palette.textTertiary,
+                      ),
                     ),
-                  ),
-                  suffix: _search.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.close, size: 12),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _search = '');
-                            _scheduleFetch();
-                          },
-                          style: const ButtonStyle(
-                            padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
-                              EdgeInsetsDirectional.zero,
+                    suffix: _search.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 12),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _search = '');
+                              _scheduleFetch();
+                            },
+                            style: const ButtonStyle(
+                              padding:
+                                  WidgetStatePropertyAll<EdgeInsetsGeometry>(
+                                    EdgeInsetsDirectional.zero,
+                                  ),
                             ),
                           ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _CategoryBar(
-            selected: _category,
-            onSelected: (BrowseCategory category) {
-              setState(() {
-                _category = category;
-                _loader = '全部';
-              });
-              _fetchOnline();
-            },
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              Text(
-                _category.description,
-                style: TextStyle(color: palette.textTertiary, fontSize: 11.5),
-              ),
-              const Spacer(),
-              if (_category != BrowseCategory.loader) ...<Widget>[
-                _FilterButton(
-                  label: '加载器',
-                  value: _loader,
-                  options: <String>['全部', ...loaders],
-                  onSelected: (String value) {
-                    setState(() => _loader = value);
-                    _fetchOnline();
-                  },
-                ),
-                const SizedBox(width: 8),
-              ],
-              _FilterButton(
-                label: '排序',
-                value: switch (_sort) {
-                  BrowseSort.popular => '热门',
-                  BrowseSort.recent => '最近更新',
-                  BrowseSort.name => '名称',
-                },
-                options: const <String>['热门', '最近更新', '名称'],
-                onSelected: (String value) {
-                  setState(() {
-                    _sort = switch (value) {
-                      '最近更新' => BrowseSort.recent,
-                      '名称' => BrowseSort.name,
-                      _ => BrowseSort.popular,
-                    };
-                  });
-                  _fetchOnline();
-                },
-              ),
-            ],
-          ),
-          if (showDemo && _error != null && _category != BrowseCategory.loader)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.cloud_off_outlined,
-                    size: 13,
-                    color: palette.warning,
                   ),
-                  const SizedBox(width: 6),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Expanded(
+            child: PageBodyEntrance(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  SizedBox(
+                    width: 218,
+                    child: Card(
+                      padding: const EdgeInsets.all(6),
+                      margin: EdgeInsets.zero,
+                      child: SlidingNavList(
+                        itemCount: _sections.length,
+                        selectedIndex: _sections.indexOf(_section),
+                        itemBuilder: (BuildContext context, int index, Key key) {
+                          final _BrowseSection item = _sections[index];
+                          return IndicatorAnchor(
+                            key: key,
+                            index: index,
+                            child: NavListTile(
+                              selected: item == _section,
+                              showIndicator: false,
+                              onPressed: () => _selectSection(item),
+                              leading: Icon(
+                                _sectionIcon(item),
+                                size: 14,
+                                color: item == _section
+                                    ? FluentTheme.of(context).accentColor
+                                    : palette.textSecondary,
+                              ),
+                              title: _sectionTitle(item),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
                   Expanded(
-                    child: Text(
-                      '连不上 Modrinth，先显示内置示例。',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 11,
+                    // Windows 11 style: replace instantly, play one entrance.
+                    // Cross-fading kept both heavy sections laid out at once.
+                    child: KeyedSubtree(
+                      key: ValueKey<_BrowseSection>(_section),
+                      child: PageBodyEntrance(
+                        duration: const Duration(milliseconds: 260),
+                        offset: 0.04,
+                        child: _isModrinth
+                            ? _modrinthContent(
+                                app,
+                                palette,
+                                showDemo: showDemo,
+                                items: items,
+                                loaders: loaders,
+                              )
+                            : const _VersionsSection(),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: PageBodyEntrance(
-              child: _loading && !_fetched
-                  ? const Center(child: ProgressRing(strokeWidth: 2))
-                  : _error != null && _online.isEmpty && !showDemo
-                  ? EmptyState(
-                      icon: Icons.cloud_off_outlined,
-                      title: 'Modrinth 没有响应',
-                      message: _error!,
-                      action: FluentButton(
-                        label: '重试',
-                        icon: Icons.refresh,
-                        onPressed: _fetchOnline,
-                      ),
-                    )
-                  : items.isEmpty
-                  ? EmptyState(
-                      icon: Icons.search_off,
-                      title: '没有找到匹配的项目',
-                      message: '换个关键词，或清除筛选条件。',
-                      action: FluentButton(
-                        label: '清除筛选',
-                        icon: Icons.filter_alt_off_outlined,
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _search = '';
-                            _loader = '全部';
-                          });
-                          _fetchOnline();
-                        },
-                      ),
-                    )
-                  : LayoutBuilder(
-                      builder:
-                          (BuildContext context, BoxConstraints constraints) {
-                            final int columns = constraints.maxWidth >= 1180
-                                ? 4
-                                : constraints.maxWidth >= 900
-                                ? 3
-                                : 2;
-                            return GridView.builder(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: columns,
-                                    mainAxisExtent: 292,
-                                    crossAxisSpacing: 14,
-                                    mainAxisSpacing: 14,
-                                  ),
-                              itemCount: items.length,
-                              itemBuilder: (BuildContext context, int index) {
-                                return _ProjectCard(
-                                  item: items[index],
-                                  onTap: () =>
-                                      _showProject(context, items[index]),
-                                );
-                              },
-                            );
-                          },
-                    ),
-            ),
           ),
         ],
       ),
+    );
+  }
+
+  String get _sectionDescription => switch (_section) {
+    _BrowseSection.mod => 'Modrinth 模组，按实例的版本与加载器安装。',
+    _BrowseSection.modpack => 'Modrinth 整合包，一键装成隔离实例。',
+    _BrowseSection.shader => 'Modrinth 光影包。',
+    _BrowseSection.loader => 'Fabric / Forge / NeoForge 加载器概览。',
+    _BrowseSection.versions => '从 Mojang 清单安装原版或带加载器的版本。',
+  };
+
+  Widget _modrinthContent(
+    AppState app,
+    FluentPalette palette, {
+    required bool showDemo,
+    required List<BrowseItem> items,
+    required List<String> loaders,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Text(
+              _category.description,
+              style: TextStyle(color: palette.textTertiary, fontSize: 11.5),
+            ),
+            const Spacer(),
+            if (_section != _BrowseSection.loader) ...<Widget>[
+              _FilterButton(
+                label: '加载器',
+                value: _loader,
+                options: <String>['全部', ...loaders],
+                onSelected: (String value) {
+                  setState(() => _loader = value);
+                  _fetchOnline();
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
+            _FilterButton(
+              label: '排序',
+              value: switch (_sort) {
+                BrowseSort.popular => '热门',
+                BrowseSort.recent => '最近更新',
+                BrowseSort.name => '名称',
+              },
+              options: const <String>['热门', '最近更新', '名称'],
+              onSelected: (String value) {
+                setState(() {
+                  _sort = switch (value) {
+                    '最近更新' => BrowseSort.recent,
+                    '名称' => BrowseSort.name,
+                    _ => BrowseSort.popular,
+                  };
+                });
+                _fetchOnline();
+              },
+            ),
+          ],
+        ),
+        if (showDemo && _error != null && _section != _BrowseSection.loader)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 13,
+                  color: palette.warning,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '连不上 Modrinth，先显示内置示例。',
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: _loading && !_fetched
+              ? const Center(child: ProgressRing(strokeWidth: 2))
+              : _error != null && _online.isEmpty && !showDemo
+              ? EmptyState(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Modrinth 没有响应',
+                  message: _error!,
+                  action: FluentButton(
+                    label: '重试',
+                    icon: Icons.refresh,
+                    onPressed: _fetchOnline,
+                  ),
+                )
+              : items.isEmpty
+              ? EmptyState(
+                  icon: Icons.search_off,
+                  title: '没有找到匹配的项目',
+                  message: '换个关键词，或清除筛选条件。',
+                  action: FluentButton(
+                    label: '清除筛选',
+                    icon: Icons.filter_alt_off_outlined,
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {
+                        _search = '';
+                        _loader = '全部';
+                      });
+                      _fetchOnline();
+                    },
+                  ),
+                )
+              : LayoutBuilder(
+                  builder:
+                      (BuildContext context, BoxConstraints constraints) {
+                        final int columns = constraints.maxWidth >= 1180
+                            ? 4
+                            : constraints.maxWidth >= 900
+                            ? 3
+                            : 2;
+                        return GridView.builder(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                mainAxisExtent: 292,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                              ),
+                          itemCount: items.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            return _ProjectCard(
+                              item: items[index],
+                              onTap: () =>
+                                  _showProject(context, items[index]),
+                            );
+                          },
+                        );
+                      },
+                ),
+        ),
+      ],
     );
   }
 
@@ -349,7 +451,7 @@ class _BrowsePageState extends State<BrowsePage> {
             style: FluentButtonStyle.primary,
             onPressed: () {
               Navigator.of(context).pop();
-              app.openSettings(SettingsSection.versions);
+              _selectSection(_BrowseSection.versions);
             },
           ),
         ],
@@ -429,86 +531,55 @@ class _BrowsePageState extends State<BrowsePage> {
   }
 }
 
-class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({required this.selected, required this.onSelected});
-
-  final BrowseCategory selected;
-  final ValueChanged<BrowseCategory> onSelected;
+/// 游戏版本 section: the shared installer embedded with a toast on finish.
+class _VersionsSection extends StatelessWidget {
+  const _VersionsSection();
 
   @override
   Widget build(BuildContext context) {
-    final FluentPalette palette = FluentColors.of(context).palette;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: BrowseCategory.values
-          .map((BrowseCategory category) {
-            final bool active = category == selected;
-            return MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () => onSelected(category),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: active
-                        ? palette.accent.withValues(alpha: 0.14)
-                        : palette.subtleFill,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: active
-                          ? palette.accent.withValues(alpha: 0.45)
-                          : palette.border,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(
-                        _categoryIcon(category),
-                        size: 14,
-                        color: active ? palette.accent : palette.textSecondary,
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        category.label,
-                        style: TextStyle(
-                          color: active
-                              ? palette.textPrimary
-                              : palette.textSecondary,
-                          fontSize: 12.5,
-                          fontWeight: active
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          })
-          .toList(growable: false),
+    final AppState app = AppScope.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 12, right: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            '安装完成后条目会出现在「库」，此处只负责下载。',
+            style: TextStyle(
+              color: FluentColors.of(context).palette.textTertiary,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 12),
+          VersionInstallForm(
+            app: app,
+            showCancel: false,
+            onFinished: (AppEntry entry) {
+              app.scanVersions();
+              showAppMessage(context, '已安装「${entry.name}」，可在「库」中启动。');
+            },
+          ),
+        ],
+      ),
     );
   }
-
-  static IconData _categoryIcon(BrowseCategory category) {
-    switch (category) {
-      case BrowseCategory.mod:
-        return Icons.extension_outlined;
-      case BrowseCategory.modpack:
-        return Icons.inventory_2_outlined;
-      case BrowseCategory.shader:
-        return Icons.auto_awesome_outlined;
-      case BrowseCategory.loader:
-        return Icons.build_circle_outlined;
-    }
-  }
 }
+
+String _sectionTitle(_BrowseSection section) => switch (section) {
+  _BrowseSection.mod => '模组',
+  _BrowseSection.modpack => '整合包',
+  _BrowseSection.shader => '光影',
+  _BrowseSection.loader => '加载器',
+  _BrowseSection.versions => '游戏版本',
+};
+
+IconData _sectionIcon(_BrowseSection section) => switch (section) {
+  _BrowseSection.mod => Icons.extension_outlined,
+  _BrowseSection.modpack => Icons.inventory_2_outlined,
+  _BrowseSection.shader => Icons.auto_awesome_outlined,
+  _BrowseSection.loader => Icons.build_circle_outlined,
+  _BrowseSection.versions => Icons.download_outlined,
+};
 
 class _FilterButton extends StatelessWidget {
   const _FilterButton({
@@ -536,7 +607,7 @@ class _FilterButton extends StatelessWidget {
         const SizedBox(width: 6),
         SizedBox(
           width: 132,
-          child: ComboBox<String>(
+          child: HclComboBox<String>(
             value: value,
             items: options
                 .map(
@@ -964,7 +1035,7 @@ class _ProjectDetailState extends State<_ProjectDetail> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: ComboBox<AppEntry>(
+                    child: HclComboBox<AppEntry>(
                       value: _target,
                       isExpanded: true,
                       items: widget.targets

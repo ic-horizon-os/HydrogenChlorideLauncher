@@ -82,7 +82,7 @@ class AboutPane extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '跨平台、可扩展的 Java 程序启动器 · Flutter + Dart + Rust',
+                      '跨平台、可扩展的 Java 程序启动器 · Flutter + Dart',
                       style: TextStyle(
                         color: palette.textSecondary,
                         fontSize: 12,

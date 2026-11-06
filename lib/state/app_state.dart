@@ -35,6 +35,7 @@ import '../core/services/library_store.dart';
 import '../core/services/microsoft_auth.dart';
 import '../core/services/plugin_registry.dart';
 import '../core/services/settings_store.dart';
+import '../core/services/skin_service.dart';
 import '../core/services/stats_service.dart';
 import '../core/services/token_vault.dart';
 import '../core/services/version_isolation.dart';
@@ -114,6 +115,7 @@ class AppState extends ChangeNotifier {
     required this.downloader,
     required this.updates,
     required this.covers,
+    required this.skins,
     required this.installModules,
   });
 
@@ -165,6 +167,7 @@ class AppState extends ChangeNotifier {
       downloader: downloader,
       updates: UpdateService(currentVersion: AppInfo.version),
       covers: CoverArtService(paths: resolvedPaths, downloader: downloader),
+      skins: SkinService(downloader: downloader, dataDir: resolvedPaths.dataDir),
       installModules: InstallModuleRegistry(resolvedPaths),
     );
     state.installModules
@@ -208,6 +211,9 @@ class AppState extends ChangeNotifier {
   final DownloadManager downloader;
   final UpdateService updates;
   final CoverArtService covers;
+
+  /// Resolves player skins from Mojang for the account page previews.
+  final SkinService skins;
   final InstallModuleRegistry installModules;
 
   /// Whether the built-in installer module is enabled.
@@ -250,7 +256,9 @@ class AppState extends ChangeNotifier {
     return task;
   }
 
-  void updateTask(AppTask task) => notifyListeners();
+  /// Kept for API compatibility; progress no longer notifies the whole
+  /// shell — widgets that show progress listen to the [AppTask] itself.
+  void updateTask(AppTask task) {}
 
   void finishTask(AppTask task, {bool success = true, String? error}) {
     task
@@ -553,6 +561,7 @@ class AppState extends ChangeNotifier {
     } on Object {
       installedVersions = <InstalledVersion>[];
     }
+    if (_disposed) return;
     scanningVersions = false;
     notifyListeners();
   }
@@ -579,7 +588,6 @@ class AppState extends ChangeNotifier {
       root: minecraftRoot,
       onProgress: (String stage, double fraction, String detail) {
         task.update(stage: stage, detail: detail, fraction: fraction);
-        updateTask(task);
         onProgress?.call(stage, fraction, detail);
       },
       downloadVanilla: downloader,
@@ -596,6 +604,7 @@ class AppState extends ChangeNotifier {
     final JavaScanResult result = await core.scanJava();
     javaRuntimes = List<JavaRuntime>.of(result.runtimes);
     javaBackend = result.backend;
+    if (_disposed) return;
     scanningJava = false;
     notifyListeners();
   }
@@ -826,6 +835,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Removes [entry] from the library AND wipes the version it points at
+  /// from disk (`versions/<folder>` — which, for isolated instances, also
+  /// carries its mods/saves/config). Irreversible; the caller confirms.
+  Future<String?> deleteVersionCompletely(AppEntry entry) async {
+    if (launcher.activeApp?.id == entry.id) {
+      return '该条目正在运行，请先停止再删除。';
+    }
+    if (!entry.isMinecraft) {
+      await removeEntry(entry.id);
+      return null;
+    }
+    final Directory versionDir = Directory(
+      join(minecraftRoot, 'versions', VersionIsolation.versionFolderName(entry)),
+    );
+    try {
+      if (versionDir.existsSync()) {
+        await versionDir.delete(recursive: true);
+      }
+    } on FileSystemException catch (error) {
+      return '删除版本文件夹失败：${error.message}';
+    }
+    await removeEntry(entry.id);
+    await scanVersions();
+    return null;
+  }
+
   // ---------------------------------------------------------------- 版本安装
 
   VersionManifest? _manifest;
@@ -864,12 +899,15 @@ class AppState extends ChangeNotifier {
           await vanillaInstaller.installVanilla(
             v,
             onProgress: (InstallProgress progress) {
+              // The module only reports coarse phase boundaries (2% → 100%);
+              // forward the installer's fine-grained progress to both the
+              // bottom task bar and the calling dialog.
               task.update(
                 stage: progress.stage,
                 detail: progress.detail,
                 fraction: progress.fraction,
               );
-              updateTask(task);
+              onProgress?.call(progress.stage, progress.fraction, progress.detail);
             },
           );
           return null;
@@ -950,7 +988,7 @@ class AppState extends ChangeNotifier {
                   detail: progress.detail,
                   fraction: progress.fraction,
                 );
-                updateTask(task);
+                onProgress?.call(progress.stage, progress.fraction, progress.detail);
               },
             );
             return null;
@@ -966,8 +1004,8 @@ class AppState extends ChangeNotifier {
       final AppEntry entry = AppEntry(
         id: '${result.loader.slug}-${result.gameVersion}-${result.loaderVersion}',
         name: result.loader.slug == 'fabric'
-            ? 'Fabric $result.loaderVersion'
-            : '${result.loader.label} $result.loaderVersion',
+            ? 'Fabric ${result.loaderVersion}'
+            : '${result.loader.label} ${result.loaderVersion}',
         subtitle: '${result.loader.label} · ${result.gameVersion}',
         description: '',
         kind: AppKind.minecraft,

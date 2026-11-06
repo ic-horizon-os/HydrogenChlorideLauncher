@@ -13,6 +13,7 @@ import '../../../../state/app_scope.dart';
 import '../../../../state/app_state.dart';
 import '../../../../theme/fluent_theme.dart';
 import '../../../widgets/fluent_widgets.dart';
+import '../../../widgets/hcl_combo_box.dart';
 import '../settings_widgets.dart';
 
 /// Settings → 版本管理.
@@ -247,7 +248,7 @@ class VersionsPane extends StatelessWidget {
               subtitle: app.settings.metaDownloadSource.description,
               trailing: SizedBox(
                 width: 180,
-                child: ComboBox<DownloadSource>(
+                child: HclComboBox<DownloadSource>(
                   value: app.settings.metaDownloadSource,
                   isExpanded: true,
                   items: DownloadSource.values
@@ -270,7 +271,7 @@ class VersionsPane extends StatelessWidget {
               subtitle: app.settings.fileDownloadSource.description,
               trailing: SizedBox(
                 width: 180,
-                child: ComboBox<DownloadSource>(
+                child: HclComboBox<DownloadSource>(
                   value: app.settings.fileDownloadSource,
                   isExpanded: true,
                   items: DownloadSource.values

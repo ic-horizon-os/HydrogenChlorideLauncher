@@ -119,13 +119,20 @@ class JavaRuntimeManager {
 
   /// Downloads Mojang's JRE component for [requiredMajor]. Returns the binary
   /// path, or throws when no component is published for the platform.
+  ///
+  /// The internal stage ramp (a handful of fixed steps up to 0.95) is mapped
+  /// into [base]..[base]+[span] so callers can slot it into their own
+  /// progress without the bar jumping backwards.
   Future<String> download(
     int requiredMajor, {
     void Function(String stage, double fraction)? onProgress,
+    double base = 0,
+    double span = 1,
   }) async {
+    double map(double value) => (base + value * span).clamp(0.0, 1.0);
     final List<String> components =
         _componentsForMajor[requiredMajor] ?? <String>['java-runtime-gamma'];
-    onProgress?.call('获取 Java 运行时清单', 0.02);
+    onProgress?.call('获取 Java 运行时清单', map(0.02));
     final Map<String, dynamic> all = await downloader.fetchJson(
       mirror.javaRuntimesUrl,
     );
@@ -159,7 +166,7 @@ class JavaRuntimeManager {
     if (manifestUrl.isEmpty) {
       throw Exception('Java 运行时清单缺少下载地址。');
     }
-    onProgress?.call('读取 Java 运行时文件列表', 0.1);
+    onProgress?.call('读取 Java 运行时文件列表', map(0.1));
     final Map<String, dynamic> manifest = await downloader.fetchJson(
       manifestUrl,
     );
@@ -184,11 +191,11 @@ class JavaRuntimeManager {
     if (files.isEmpty) {
       throw Exception('Java 运行时清单为空。');
     }
-    onProgress?.call('下载 Java 运行时', 0.15);
+    onProgress?.call('下载 Java 运行时', map(0.15));
     final DownloadBatchResult result = await downloader.run(
       files,
       onProgress: (DownloadProgress progress) {
-        onProgress?.call('下载 Java 运行时', 0.15 + progress.fraction * 0.8);
+        onProgress?.call('下载 Java 运行时', map(0.15 + progress.fraction * 0.8));
       },
     );
     if (!result.ok) {

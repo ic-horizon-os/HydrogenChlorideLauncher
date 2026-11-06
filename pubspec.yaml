@@ -1,7 +1,7 @@
 name: hydrogen_chloride_launcher
 description: "Hydrogen Chloride Launcher - a cross-platform Java program launcher"
 publish_to: 'none'
-version: 0.1.0-alpha.1+1
+version: 0.1.0-alpha.2+2
 
 environment:
   sdk: ^3.13.5

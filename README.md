@@ -67,7 +67,7 @@
 
 - Flutter 3.47 / Dart 3.13
 - `fluent_ui` 4.17（FluentApp、NavigationView、ScaffoldPage、Card、ToggleSwitch/Slider/TextBox）
-- 纯 Dart 实现（原 Rust 边车已全部改写为 Dart）
+- 纯 Dart 实现，单一二进制产物，无额外工具链
 - `window_manager`、`file_selector`、`http`、`url_launcher`、`package_info_plus`
 - `archive`（natives/jar/.mrpack/更新包）、`crypto`（SHA-1/SHA-256）、`xml`（RSS/Atom）
 - 状态管理使用内置 `ChangeNotifier`，图表使用 `CustomPainter`；不使用 Material `Scaffold` 手拼结构

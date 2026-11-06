@@ -250,7 +250,16 @@ class LoaderInstaller {
     final File vanillaFile = File(
       p.join(root, 'versions', gameVersion, '$gameVersion.json'),
     );
-    if (!await vanillaFile.exists()) {
+    final bool installedVanilla = !await vanillaFile.exists();
+    // The loader steps below report relative 0..1 fractions. Map them high
+    // enough to sit above a vanilla phase that just ran, but near zero when
+    // the vanilla version was already on disk.
+    final double base = installedVanilla ? 0.58 : 0.03;
+    void loaderReport(String stage, double fraction, [String detail = '']) {
+      report(stage, base + fraction.clamp(0.0, 1.0) * (1 - base), detail);
+    }
+
+    if (installedVanilla) {
       report('安装原版 $gameVersion', 0.01);
       await vanilla.installVanilla(
         gameVersion,
@@ -262,14 +271,14 @@ class LoaderInstaller {
 
     switch (loader) {
       case LoaderKind.fabric:
-        return _installFabric(gameVersion, loaderVersion, report);
+        return _installFabric(gameVersion, loaderVersion, loaderReport);
       case LoaderKind.forge:
       case LoaderKind.neoforge:
         return _installForge(
           loader,
           gameVersion,
           loaderVersion,
-          report,
+          loaderReport,
           javaExecutable,
         );
       case LoaderKind.optifine:
@@ -282,7 +291,7 @@ class LoaderInstaller {
     String loaderVersion,
     void Function(String, double, [String]) report,
   ) async {
-    report('获取 Fabric 版本信息', 0.55);
+    report('获取 Fabric 版本信息', 0.05);
     final Map<String, dynamic> json = await downloader.fetchJson(
       '$fabricMeta/versions/loader/$gameVersion/$loaderVersion/profile/json',
     );
@@ -291,7 +300,7 @@ class LoaderInstaller {
     json['inheritsFrom'] = gameVersion;
     json['type'] = 'release';
 
-    report('下载 Fabric 库文件', 0.62);
+    report('下载 Fabric 库文件', 0.15);
     final List<DownloadRequest> libraries = <DownloadRequest>[];
     for (final Map<String, dynamic> library
         in (json['libraries'] as List? ?? <Object?>[])
@@ -328,7 +337,7 @@ class LoaderInstaller {
       onProgress: (DownloadProgress progress) {
         report(
           '下载 Fabric 库文件',
-          0.62 + progress.fraction * 0.32,
+          0.15 + progress.fraction * 0.8,
           progress.currentFile,
         );
       },
@@ -380,7 +389,7 @@ class LoaderInstaller {
     await versionDir.create(recursive: true);
     final File installerFile = File(p.join(versionDir.path, fileName));
 
-    report('下载 ${loader.label} 安装器', 0.55);
+    report('下载 ${loader.label} 安装器', 0.1);
     final DownloadBatchResult install = await downloader.run(<DownloadRequest>[
       DownloadRequest(url: url, destination: installerFile.path),
     ]);
@@ -403,6 +412,9 @@ class LoaderInstaller {
       );
     }
 
+    // The installer jar drives its own output; hold a labelled plateau here
+    // rather than a stale fraction.
+    report('运行 ${loader.label} 安装器', 0.5);
     final DateTime installedSince = DateTime.now().subtract(
       const Duration(minutes: 5),
     );

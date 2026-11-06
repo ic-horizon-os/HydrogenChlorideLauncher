@@ -11,23 +11,19 @@ class JavaScanResult {
 
   final List<JavaRuntime> runtimes;
   final String backend;
-
-  bool get usedRust => false;
 }
 
-/// Platform helpers: Java discovery, directory size, hashing and credential
-/// storage.
-///
-/// This used to be a bridge to a Rust sidecar (`hcl-core`). Everything is now
-/// native Dart, so the launcher ships a single binary and no extra toolchain
-/// is needed to build it. The public API is unchanged.
+/// Platform helpers implemented in pure Dart: Java discovery, directory
+/// size, hashing and credential storage. The launcher ships a single binary
+/// and no extra toolchain is needed to build it.
 class CoreBridge {
   CoreBridge({this.explicitPath});
 
   /// Kept for source compatibility with older callers; unused.
   final String? explicitPath;
 
-  /// Always false now: no external sidecar is required.
+  /// Always false: tokens currently persist in the 0600 file; the
+  /// secretGet/Set calls remain available for keychain-aware callers.
   bool get isAvailable => false;
 
   String get backendLabel => 'Dart';

@@ -15,6 +15,7 @@ import '../../../core/utils/format.dart';
 import '../../../state/app_state.dart';
 import '../../../theme/fluent_theme.dart';
 import '../../widgets/fluent_widgets.dart';
+import '../../widgets/hcl_combo_box.dart';
 
 class LoaderPanel extends StatefulWidget {
   const LoaderPanel({super.key, required this.entry, required this.app});
@@ -234,7 +235,7 @@ class _LoaderPanelState extends State<LoaderPanel> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          ComboBox<String>(
+                          HclComboBox<String>(
                             value: _loader,
                             items: _kinds.keys
                                 .map(
@@ -314,7 +315,7 @@ class _LoaderPanelState extends State<LoaderPanel> {
                                       fontSize: 11.5,
                                     ),
                                   )
-                                : ComboBox<String>(
+                                : HclComboBox<String>(
                                     value: _build,
                                     isExpanded: true,
                                     placeholder: const Text('读取构建'),
@@ -1011,7 +1012,7 @@ class _SkinsPanelState extends State<SkinsPanel> {
               if (_selected != null) ...<Widget>[
                 SizedBox(
                   width: 128,
-                  child: ComboBox<String>(
+                  child: HclComboBox<String>(
                     value: _variant,
                     items: const <ComboBoxItem<String>>[
                       ComboBoxItem<String>(

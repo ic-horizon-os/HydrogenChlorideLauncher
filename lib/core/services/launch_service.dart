@@ -164,6 +164,9 @@ class LaunchService extends ChangeNotifier {
     if (version == null) {
       throw MissingVersionException(versionId, root);
     }
+    // Launch used to sit at its initial fraction the whole time because only
+    // the Java-download path reported anything; walk the real stages instead.
+    onProgress?.call('读取版本文件', 0.12);
 
     final String java = await _resolveJava(
       entry: entry,
@@ -173,6 +176,7 @@ class LaunchService extends ChangeNotifier {
       onProgress: onProgress,
     );
 
+    onProgress?.call('准备游戏目录', 0.45);
     await VersionIsolation.ensure(entry, settings);
     final String gameDir = VersionIsolation.instanceDir(entry, settings);
     await Directory(gameDir).create(recursive: true);
@@ -184,6 +188,7 @@ class LaunchService extends ChangeNotifier {
     _logPath = logPath;
     final VersionChain? chain = await VersionChain.load(root, versionId);
 
+    onProgress?.call('构建启动参数', 0.65);
     final LaunchPlan plan = GameLauncher.plan(
       version: version,
       entry: entry,
@@ -199,6 +204,7 @@ class LaunchService extends ChangeNotifier {
       logPath: logPath,
       versionChain: chain,
     );
+    onProgress?.call('启动进程', 0.85);
     return GameLauncher.start(plan);
   }
 
@@ -212,6 +218,7 @@ class LaunchService extends ChangeNotifier {
     final AppSettings settings = context.settings;
     final JavaRuntimeManager manager = context.javaManagerFor(root);
     final int required = version.javaVersion ?? 8;
+    onProgress?.call('检查 Java', 0.18);
 
     String? override = entry.javaPathOverride?.trim();
     if (override != null && override.isNotEmpty) {
@@ -239,11 +246,13 @@ class LaunchService extends ChangeNotifier {
         '请在「Java 设置」中指定，或开启自动下载 Java。',
       );
     }
-    onProgress?.call('准备 Java 运行时', 0.1);
+    onProgress?.call('准备 Java 运行时', 0.22);
     return manager.download(
       required,
       onProgress: (String stage, double fraction) =>
           onProgress?.call(stage, fraction),
+      base: 0.22,
+      span: 0.73,
     );
   }
 

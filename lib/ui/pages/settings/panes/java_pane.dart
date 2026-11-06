@@ -93,7 +93,7 @@ class _JavaPaneState extends State<JavaPane> {
         ),
         const SizedBox(height: 16),
         const SettingsBanner(
-          message: '仅保存配置，不分配内存或启动 Java。优先使用 Rust 扫描，缺失时回退 Dart。',
+          message: '仅保存配置，不分配内存或启动 Java。扫描与哈希均为纯 Dart 实现。',
         ),
         const SizedBox(height: 16),
         SettingsCard(

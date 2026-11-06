@@ -4,8 +4,6 @@ import 'dart:math' as math;
 import 'package:file_selector/file_selector.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 
-import '../../../core/minecraft/loader_installer.dart';
-import '../../../core/minecraft/version_manifest.dart';
 import '../../../core/models/app_entry.dart';
 import '../../../core/models/app_settings.dart';
 import '../../../core/models/java_runtime.dart';
@@ -16,6 +14,7 @@ import '../../../state/app_scope.dart';
 import '../../../state/app_state.dart';
 import '../../../theme/fluent_theme.dart';
 import '../../widgets/fluent_widgets.dart';
+import '../../widgets/version_install_form.dart';
 import 'library_panels.dart';
 
 enum LibraryDetailTab { overview, loader, mods, worlds, skins, crashes }
@@ -142,7 +141,6 @@ class _LibraryPageState extends State<LibraryPage> {
                                       showIndicator: false,
                                       onPressed: () =>
                                           app.selectLibraryEntry(entry.id),
-                                      leading: _AppIcon(entry: entry),
                                       title: entry.name,
                                       subtitle: entry.subtitle.isEmpty
                                           ? _kindLabel(entry.kind)
@@ -177,27 +175,20 @@ class _LibraryPageState extends State<LibraryPage> {
                                       setState(() => _detailTab = tab),
                                 ),
                                 Expanded(
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 180),
-                                    switchInCurve: Curves.easeOutCubic,
-                                    switchOutCurve: Curves.easeInCubic,
-                                    transitionBuilder:
-                                        (
-                                          Widget child,
-                                          Animation<double> animation,
-                                        ) {
-                                          return FadeTransition(
-                                            opacity: animation,
-                                            child: SlideTransition(
-                                              position: Tween<Offset>(
-                                                begin: const Offset(0, 0.01),
-                                                end: Offset.zero,
-                                              ).animate(animation),
-                                              child: child,
-                                            ),
-                                          );
-                                        },
-                                    child: _detailContent(selected, app),
+                                  // Instant replace + single entrance: the
+                                  // detail panels are heavy, cross-fading two
+                                  // of them doubles layout work per switch.
+                                  child: KeyedSubtree(
+                                    key: ValueKey<String>(
+                                      '${selected.id}-${_detailTab.name}',
+                                    ),
+                                    child: PageBodyEntrance(
+                                      duration: const Duration(
+                                        milliseconds: 220,
+                                      ),
+                                      offset: 0.03,
+                                      child: _detailContent(selected, app),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -260,7 +251,7 @@ class _LibraryPageState extends State<LibraryPage> {
       title: '安装 Minecraft 版本',
       description: '从 Mojang 下载版本 JSON、客户端、库文件与资源。',
       width: 620,
-      child: _InstallVersionForm(app: app),
+      child: VersionInstallForm(app: app),
     );
     if (context.mounted) await app.scanVersions();
   }
@@ -354,6 +345,19 @@ class _LibraryPageState extends State<LibraryPage> {
                   ? null
                   : () => _removeEntry(context, app, entry),
             ),
+            MenuFlyoutItem(
+              text: const Text(
+                '彻底删除版本',
+                style: TextStyle(color: Color(0xFFC42B1C)),
+              ),
+              leading: const Icon(
+                FluentIcons.delete,
+                color: Color(0xFFC42B1C),
+              ),
+              onPressed: running
+                  ? null
+                  : () => _deleteVersionCompletely(context, app, entry),
+            ),
           ],
         );
       },
@@ -395,6 +399,30 @@ class _LibraryPageState extends State<LibraryPage> {
       destructive: true,
     );
     if (confirmed) await app.removeEntry(entry.id);
+  }
+
+  Future<void> _deleteVersionCompletely(
+    BuildContext context,
+    AppState app,
+    AppEntry entry,
+  ) async {
+    final bool confirmed = await showConfirmDialog(
+      context: context,
+      title: '彻底删除版本',
+      message: '将删除“${entry.name}”的版本文件夹'
+          '${entry.isolated ? '（含该实例的存档、模组与配置）' : ''}，'
+          '并从库中移除条目。此操作不可恢复。',
+      confirmLabel: '彻底删除',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    final String? error = await app.deleteVersionCompletely(entry);
+    if (!context.mounted) return;
+    if (error != null) {
+      showAppMessage(context, error);
+    } else {
+      showAppMessage(context, '已彻底删除“${entry.name}”。');
+    }
   }
 
   Future<void> _editInstanceSettings(
@@ -944,46 +972,6 @@ class _OfficialCover extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _AppIcon extends StatelessWidget {
-  const _AppIcon({required this.entry});
-
-  final AppEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color base = Color(entry.iconColorValue);
-    final String initial = entry.name.isEmpty
-        ? '?'
-        : entry.name.substring(0, 1).toUpperCase();
-    return SizedBox(
-      width: 34,
-      height: 34,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[base, Color.lerp(base, Colors.black, 0.42)!],
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(
-          child: entry.isMinecraft
-              ? const Icon(FluentIcons.game, color: Colors.white, size: 16)
-              : Text(
-                  initial,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-        ),
-      ),
     );
   }
 }
@@ -1700,502 +1688,3 @@ class _BannerArtPainter extends CustomPainter {
   }
 }
 
-/// Version picker with a live, stage-by-stage download readout.
-class _InstallVersionForm extends StatefulWidget {
-  const _InstallVersionForm({required this.app});
-
-  final AppState app;
-
-  @override
-  State<_InstallVersionForm> createState() => _InstallVersionFormState();
-}
-
-class _InstallVersionFormState extends State<_InstallVersionForm> {
-  static const Map<String, LoaderKind?> _loaders = <String, LoaderKind?>{
-    '不安装加载器': null,
-    'Fabric': LoaderKind.fabric,
-    'Forge': LoaderKind.forge,
-    'NeoForge': LoaderKind.neoforge,
-  };
-
-  String? _selected;
-  bool _loading = true;
-  String? _error;
-  bool _installing = false;
-  String _stage = '';
-  String _detail = '';
-  double _fraction = 0;
-
-  String _loaderChoice = '不安装加载器';
-  List<LoaderBuild> _builds = <LoaderBuild>[];
-  String? _build;
-  bool _loadingBuilds = false;
-  String? _buildError;
-
-  LoaderKind? get _loader => _loaders[_loaderChoice];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  /// Loader builds for the currently selected game version.
-  Future<void> _loadBuilds() async {
-    final LoaderKind? loader = _loader;
-    final String? version = _selected;
-    if (loader == null || version == null) {
-      setState(() {
-        _builds = <LoaderBuild>[];
-        _build = null;
-        _buildError = null;
-        _loadingBuilds = false;
-      });
-      return;
-    }
-    setState(() {
-      _loadingBuilds = true;
-      _buildError = null;
-      _builds = <LoaderBuild>[];
-      _build = null;
-    });
-    try {
-      final List<LoaderBuild> builds = await widget.app.loaderInstaller
-          .listBuilds(loader, version);
-      if (!mounted) return;
-      setState(() {
-        _loadingBuilds = false;
-        _builds = builds;
-        _build = builds.isEmpty ? null : builds.first.loaderVersion;
-        if (builds.isEmpty) _buildError = '该版本没有可用的 $loader 构建。';
-      });
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadingBuilds = false;
-        _buildError = error.toString();
-      });
-    }
-  }
-
-  Future<void> _load({bool force = false}) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final VersionManifest manifest = await widget.app.loadManifest(
-        force: force,
-      );
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _selected ??= manifest.latestRelease.isNotEmpty
-            ? manifest.latestRelease
-            : manifest.releases.firstOrNull?.id;
-      });
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '读取版本清单失败：$error';
-      });
-    }
-  }
-
-  Future<void> _install() async {
-    final String? version = _selected;
-    if (version == null || _installing) return;
-    setState(() {
-      _installing = true;
-      _stage = '准备';
-      _detail = '';
-      _fraction = 0;
-    });
-    final AppEntry? created = await widget.app.installVersion(
-      version,
-      onProgress: (String stage, double fraction, String detail) {
-        if (!mounted) return;
-        setState(() {
-          // The loader install runs after vanilla; show it as a second phase.
-          _stage = _loader == null ? stage : '原版 · $stage';
-          _fraction = _loader == null ? fraction : fraction * 0.6;
-          _detail = detail;
-        });
-      },
-    );
-    if (!mounted) return;
-    if (created == null) {
-      setState(() {
-        _installing = false;
-        _error = widget.app.lastError ?? '安装失败。';
-      });
-      return;
-    }
-
-    final LoaderKind? loader = _loader;
-    final String? build = _build;
-    if (loader != null && build != null) {
-      final AppEntry? withLoader = await widget.app.installLoader(
-        loader,
-        version,
-        build,
-        onProgress: (String stage, double fraction, String detail) {
-          if (!mounted) return;
-          setState(() {
-            _stage = '加载器 · $stage';
-            _fraction = 0.6 + fraction * 0.4;
-            _detail = detail;
-          });
-        },
-      );
-      if (!mounted) return;
-      setState(() => _installing = false);
-      if (withLoader == null) {
-        setState(
-          () => _error = '原版已安装，但加载器安装失败：${widget.app.lastError ?? '未知错误'}',
-        );
-        return;
-      }
-      Navigator.of(context).pop(withLoader);
-      return;
-    }
-
-    setState(() => _installing = false);
-    Navigator.of(context).pop(created);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final FluentPalette palette = FluentColors.of(context).palette;
-    final VersionManifest? manifest = widget.app.manifest;
-    final List<VersionManifestEntry> releases =
-        manifest?.releases ?? const <VersionManifestEntry>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        if (_loading && manifest == null)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: ProgressRing(strokeWidth: 2)),
-          )
-        else
-          VersionPicker(
-            versions: releases
-                .map((VersionManifestEntry entry) => entry.id)
-                .toList(growable: false),
-            selected: _selected,
-            subtitleOf: (String id) {
-              final VersionManifestEntry? entry = manifest?.find(id);
-              return entry == null
-                  ? null
-                  : formatRelativeTime(entry.releaseTime);
-            },
-            onSelected: _installing
-                ? (String _) {}
-                : (String id) {
-                    setState(() => _selected = id);
-                    _loadBuilds();
-                  },
-          ),
-        const SizedBox(height: 14),
-        Row(
-          children: <Widget>[
-            Text(
-              '加载器',
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 220,
-              child: ComboBox<String>(
-                value: _loaderChoice,
-                isExpanded: true,
-                items: _loaders.keys
-                    .map(
-                      (String name) =>
-                          ComboBoxItem<String>(value: name, child: Text(name)),
-                    )
-                    .toList(growable: false),
-                onChanged: _installing
-                    ? null
-                    : (String? value) {
-                        if (value == null) return;
-                        setState(() => _loaderChoice = value);
-                        _loadBuilds();
-                      },
-              ),
-            ),
-          ],
-        ),
-        if (_loader != null) ...<Widget>[
-          const SizedBox(height: 10),
-          if (_loadingBuilds)
-            Text(
-              '正在获取加载器构建…',
-              style: TextStyle(color: palette.textTertiary, fontSize: 11),
-            )
-          else if (_buildError != null)
-            Text(
-              _buildError!,
-              style: TextStyle(color: palette.danger, fontSize: 11),
-            )
-          else
-            VersionPicker(
-              height: 130,
-              versions: _builds
-                  .map((LoaderBuild build) => build.loaderVersion)
-                  .toList(growable: false),
-              selected: _build,
-              onSelected: _installing
-                  ? (String _) {}
-                  : (String value) => setState(() => _build = value),
-            ),
-        ],
-        if (_error != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: palette.danger, fontSize: 11.5),
-          ),
-        ],
-        if (_installing) ...<Widget>[
-          const SizedBox(height: 16),
-          InstallStageProgress(
-            stage: _stage,
-            detail: _detail,
-            fraction: _fraction,
-          ),
-        ],
-        const SizedBox(height: 16),
-        Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Button(
-                onPressed: _installing
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _installing || _selected == null ? null : _install,
-                child: Text(_installing ? '安装中…' : '安装'),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Loader picker with build selection and the same staged progress readout.
-class _InstallLoaderForm extends StatefulWidget {
-  const _InstallLoaderForm({required this.app});
-
-  final AppState app;
-
-  @override
-  State<_InstallLoaderForm> createState() => _InstallLoaderFormState();
-}
-
-class _InstallLoaderFormState extends State<_InstallLoaderForm> {
-  static const Map<String, LoaderKind> _kinds = <String, LoaderKind>{
-    'Fabric': LoaderKind.fabric,
-    'Forge': LoaderKind.forge,
-    'NeoForge': LoaderKind.neoforge,
-  };
-
-  String _loader = 'Fabric';
-  final TextEditingController _version = TextEditingController(text: '1.21.1');
-  List<LoaderBuild> _builds = <LoaderBuild>[];
-  String? _build;
-  bool _loadingBuilds = false;
-  String? _error;
-  bool _installing = false;
-  String _stage = '';
-  String _detail = '';
-  double _fraction = 0;
-
-  LoaderKind get _kind => _kinds[_loader]!;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBuilds());
-  }
-
-  @override
-  void dispose() {
-    _version.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadBuilds() async {
-    setState(() {
-      _loadingBuilds = true;
-      _error = null;
-      _builds = <LoaderBuild>[];
-      _build = null;
-    });
-    try {
-      final List<LoaderBuild> builds = await widget.app.loaderInstaller
-          .listBuilds(_kind, _version.text.trim());
-      if (!mounted) return;
-      setState(() {
-        _loadingBuilds = false;
-        _builds = builds;
-        _build = builds.isEmpty ? null : builds.first.loaderVersion;
-        if (builds.isEmpty) _error = '没有找到可用的构建。';
-      });
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadingBuilds = false;
-        _error = error.toString();
-      });
-    }
-  }
-
-  Future<void> _install() async {
-    final String? build = _build;
-    if (build == null || _installing) return;
-    setState(() {
-      _installing = true;
-      _stage = '准备';
-      _detail = '';
-      _fraction = 0;
-    });
-    final AppEntry? created = await widget.app.installLoader(
-      _kind,
-      _version.text.trim(),
-      build,
-      onProgress: (String stage, double fraction, String detail) {
-        if (!mounted) return;
-        setState(() {
-          _stage = stage;
-          _fraction = fraction;
-          _detail = detail;
-        });
-      },
-    );
-    if (!mounted) return;
-    setState(() => _installing = false);
-    if (created == null) {
-      setState(() => _error = widget.app.lastError ?? '安装失败。');
-      return;
-    }
-    Navigator.of(context).pop(created);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final FluentPalette palette = FluentColors.of(context).palette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: ComboBox<String>(
-                value: _loader,
-                isExpanded: true,
-                items: _kinds.keys
-                    .map(
-                      (String name) =>
-                          ComboBoxItem<String>(value: name, child: Text(name)),
-                    )
-                    .toList(growable: false),
-                onChanged: _installing
-                    ? null
-                    : (String? value) {
-                        if (value == null) return;
-                        setState(() => _loader = value);
-                        _loadBuilds();
-                      },
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 150,
-              child: TextBox(
-                controller: _version,
-                placeholder: '游戏版本',
-                enabled: !_installing,
-                onSubmitted: (_) => _loadBuilds(),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FluentButton(
-              label: '获取构建',
-              dense: true,
-              loading: _loadingBuilds,
-              onPressed: _installing ? null : _loadBuilds,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (_loadingBuilds)
-          Text(
-            '正在获取构建列表…',
-            style: TextStyle(color: palette.textTertiary, fontSize: 11.5),
-          )
-        else
-          VersionPicker(
-            height: 180,
-            versions: _builds
-                .map((LoaderBuild build) => build.loaderVersion)
-                .toList(growable: false),
-            selected: _build,
-            onSelected: _installing
-                ? (String _) {}
-                : (String value) => setState(() => _build = value),
-          ),
-        if (_error != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Text(
-            _error!,
-            style: TextStyle(color: palette.danger, fontSize: 11.5),
-          ),
-        ],
-        if (_installing) ...<Widget>[
-          const SizedBox(height: 16),
-          InstallStageProgress(
-            stage: _stage,
-            detail: _detail,
-            fraction: _fraction,
-          ),
-        ],
-        const SizedBox(height: 16),
-        Align(
-          alignment: AlignmentDirectional.centerEnd,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Button(
-                onPressed: _installing
-                    ? null
-                    : () => Navigator.of(context).pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _installing || _build == null ? null : _install,
-                child: Text(_installing ? '安装中…' : '安装'),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}

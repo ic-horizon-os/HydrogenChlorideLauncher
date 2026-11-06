@@ -2,7 +2,7 @@ import 'package:path/path.dart' as p;
 
 import '../utils/json_utils.dart';
 
-/// A Java runtime discovered by the Rust core or the pure-Dart fallback.
+/// A Java runtime discovered by the Dart scanner.
 class JavaRuntime {
   const JavaRuntime({
     required this.path,
