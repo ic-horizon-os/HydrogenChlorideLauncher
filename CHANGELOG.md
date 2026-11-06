@@ -29,7 +29,7 @@
 
 ### 新增
 
-- **开箱即用的微软登录**：内置通用公开 client ID（`00000000402b5328`），走 `login.live.com` 设备码流程，输入代码到 microsoft.com/link 即可登录，无需自己注册 Azure 应用；
+- **微软设备码登录**：走 `login.live.com` 设备码流程，输入代码到 microsoft.com/link；需在设置中填写自己的 Azure 应用 client ID，或设置 `HCL_MS_CLIENT_ID` 环境变量；
 - **浏览器登录（可选）**：自建 Azure 应用时可用 OAuth 2.0 授权码 + PKCE + 本机回环回调。
 - **Minecraft 下载管线**：Mojang 版本清单、版本 JSON（含 `inheritsFrom` 合并）、客户端、libraries（按 `rules` 过滤平台）、natives 解压、资源索引与资源对象；SHA-1 校验、`.part` 断点续传、并发下载与重试。
 - **真实启动**：classpath 组装、JVM/游戏参数模板替换、独立启动日志 `logs/hcl-launch-*.log`；进程退出后写入时长与会话记录。

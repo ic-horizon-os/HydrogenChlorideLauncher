@@ -52,9 +52,6 @@ class _AccountPaneState extends State<AccountPane> {
   static String _clientIdNote(AppState app) {
     final String current = app.effectiveClientId ?? '';
     if (current.isEmpty) return '未配置：登录前请填写 Azure 应用 ID';
-    if (current == AppInfo.defaultMicrosoftClientId) {
-      return '内置 ID：可直接登录；也可换成你自己的 Azure 应用';
-    }
     return '自定义 ID：令牌只发给你注册的应用';
   }
 
@@ -415,12 +412,7 @@ class _AccountPaneState extends State<AccountPane> {
                     '${app.effectiveClientId ?? '未配置'}\n'
                     '${_clientIdNote(app)}',
                 trailing: MetaPill(
-                  label: usingEnv
-                      ? '环境变量'
-                      : app.settings.microsoftClientId ==
-                            AppInfo.defaultMicrosoftClientId
-                      ? '内置'
-                      : '本机设置',
+                  label: usingEnv ? '环境变量' : '本机设置',
                   dense: true,
                 ),
               ),

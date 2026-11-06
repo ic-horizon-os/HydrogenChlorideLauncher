@@ -73,7 +73,7 @@ Microsoft OAuth 设备码
 注意事项：
 
 - 默认**不需要任何配置**：点「使用设备码登录」，把显示的代码输入到 `microsoft.com/link` 即可。
-- 内置的是通用公开 client ID（`00000000402b5328`），令牌发给该应用而非本启动器，介意请换成自建应用。
+- 启动器不内置 client ID：请在设置中填写自己注册的 Azure 应用 ID，或设置 `HCL_MS_CLIENT_ID` 环境变量；令牌发给该应用。
 - 想用「浏览器登录」：在 Azure Portal 新建应用，账户类型含个人账户，Authentication 添加平台「移动和桌面应用程序」并勾选 `http://localhost`，然后把 client ID 填进设置。
 - 两种流程都**不需要 client secret**，不要把 secret 提交到仓库。
 - 未登录时，Minecraft 与整合包条目会被禁止启动；自定义程序与实用软件不受影响。

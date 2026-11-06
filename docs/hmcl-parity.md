@@ -5,7 +5,7 @@
 
 | 功能 | 当前状态 | 说明 |
 | --- | --- | --- |
-| 微软账户登录 | 已实现 | 内置公开 client ID + 设备码（PCL2 同款，输入代码到 microsoft.com/link）；支持自建 Azure 应用的浏览器回环登录 → Xbox Live → XSTS → Minecraft Services；启动前自动刷新过期令牌 |
+| 微软账户登录 | 已实现 | 设备码登录（PCL2 同款，输入代码到 microsoft.com/link），使用自建的 Azure 应用 client ID；支持浏览器回环登录 → Xbox Live → XSTS → Minecraft Services；启动前自动刷新过期令牌 |
 | 令牌存储 | 已实现 | 优先系统钥匙串（Linux Secret Service），不可用时回退 0600 文件 |
 | Java 管理 | 已实现 | 扫描本机 Java、选择默认运行时、手动添加路径 |
 | Java 运行时下载 | 已实现 | 本机没有匹配版本时从 Mojang 下载对应 JRE 到 `runtime/`，按版本要求自动选择 |
@@ -46,7 +46,7 @@
 - Forge/NeoForge 安装依赖 `maven.neoforged.net` 与 Forge 官方站点；部分网络无法访问时会明确报错。
 - NeoForge 仅支持 Minecraft 1.20.2 及以上（更早版本没有 NeoForge 分支）。
 - OptiFine 没有公开直链，需要用户从官网下载安装文件后导入。
-- 内置 client ID `00000000402b5328` 是第三方 Minecraft 登录应用的公开 ID，不属于本启动器；令牌发给该应用，无法由本启动器控制其生命周期。介意的话请在设置里换成自己注册的 Azure 应用。
+- 启动器不内置 client ID；令牌发给你在设置中填写的 Azure 应用，其生命周期由该应用决定。
 - 浏览器回环登录要求自建应用在「移动和桌面应用程序」平台注册 `http://localhost` 重定向。
 - 自动更新不做代码签名与二进制增量，更新包只校验 SHA-256。
 - 披风上传、CurseForge 整合包、模组更新检测尚未实现。

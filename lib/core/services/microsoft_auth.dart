@@ -10,7 +10,6 @@ import '../config/app_paths.dart';
 import '../models/account.dart';
 import 'loopback_sign_in.dart';
 import 'token_vault.dart';
-import '../constants.dart';
 import '../utils/json_utils.dart';
 
 class DeviceCodeInfo {
@@ -76,28 +75,17 @@ class MicrosoftAuthService extends ChangeNotifier {
   bool get isLoggedIn => _account != null;
   String? get lastError => _lastError;
 
-  /// The default public client only exists in the legacy Live Connect
-  /// directory, so it must use login.live.com. A user's own Azure app uses the
-  /// Microsoft identity platform (Entra) endpoints instead.
-  static const String _liveDeviceCodeEndpoint =
-      'https://login.live.com/oauth20_connect.srf';
-  static const String _liveTokenEndpoint =
-      'https://login.live.com/oauth20_token.srf';
+  /// User-registered Azure consumer apps use the
+  /// Microsoft identity platform (Entra) endpoints.
   static const String _entraDeviceCodeEndpoint =
       'https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode';
   static const String _entraTokenEndpoint =
       'https://login.microsoftonline.com/consumers/oauth2/v2.0/token';
 
-  static bool usesLiveConnect(String clientId) =>
-      clientId.trim() == AppInfo.defaultMicrosoftClientId;
-
   static String deviceCodeEndpointFor(String clientId) =>
-      usesLiveConnect(clientId)
-      ? _liveDeviceCodeEndpoint
-      : _entraDeviceCodeEndpoint;
+      _entraDeviceCodeEndpoint;
 
-  static String tokenEndpointFor(String clientId) =>
-      usesLiveConnect(clientId) ? _liveTokenEndpoint : _entraTokenEndpoint;
+  static String tokenEndpointFor(String clientId) => _entraTokenEndpoint;
   static const String _xblEndpoint =
       'https://user.auth.xboxlive.com/user/authenticate';
   static const String _xstsEndpoint =
@@ -141,8 +129,7 @@ class MicrosoftAuthService extends ChangeNotifier {
             body: <String, String>{
               'client_id': normalized,
               'scope': _scope,
-              // Live Connect requires this; Entra infers it from the endpoint.
-              if (usesLiveConnect(normalized)) 'response_type': 'device_code',
+              'response_type': 'device_code',
             },
           )
           .timeout(const Duration(seconds: 30));

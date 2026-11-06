@@ -5,32 +5,23 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hydrogen_chloride_launcher/core/config/app_paths.dart';
-import 'package:hydrogen_chloride_launcher/core/constants.dart';
 import 'package:hydrogen_chloride_launcher/core/services/core_bridge.dart';
 import 'package:hydrogen_chloride_launcher/core/services/microsoft_auth.dart';
 import 'package:hydrogen_chloride_launcher/core/services/token_vault.dart';
 
 final bool _live = Platform.environment['HCL_LIVE'] == '1';
 
+const String _fixtureClientId = 'hcl-fixture-client-id';
+
 void main() {
-  test('public client routes to Live Connect, custom id to Entra', () {
-    const String publicId = AppInfo.defaultMicrosoftClientId;
+  test('device code endpoints are the Entra consumer endpoints', () {
     expect(
-      MicrosoftAuthService.deviceCodeEndpointFor(publicId),
-      'https://login.live.com/oauth20_connect.srf',
+      MicrosoftAuthService.deviceCodeEndpointFor(_fixtureClientId),
+      'https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode',
     );
     expect(
-      MicrosoftAuthService.tokenEndpointFor(publicId),
-      'https://login.live.com/oauth20_token.srf',
-    );
-    const String ownId = '11111111-2222-3333-4444-555555555555';
-    expect(
-      MicrosoftAuthService.deviceCodeEndpointFor(ownId),
-      contains('microsoftonline.com'),
-    );
-    expect(
-      MicrosoftAuthService.tokenEndpointFor(ownId),
-      contains('microsoftonline.com'),
+      MicrosoftAuthService.tokenEndpointFor(_fixtureClientId),
+      'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
     );
   });
 
@@ -49,7 +40,7 @@ void main() {
         ),
       );
       final DeviceCodeInfo info = await auth.requestDeviceCode(
-        AppInfo.defaultMicrosoftClientId,
+        _fixtureClientId,
       );
       expect(info.userCode, isNotEmpty);
       expect(info.deviceCode, isNotEmpty);

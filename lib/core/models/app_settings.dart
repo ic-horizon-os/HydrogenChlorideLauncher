@@ -1,7 +1,6 @@
 import 'package:fluent_ui/fluent_ui.dart';
 
 import '../minecraft/download_source.dart';
-import '../constants.dart';
 import '../utils/json_utils.dart';
 
 enum AppThemeMode { system, light, dark }
@@ -44,7 +43,7 @@ class AppSettings {
       backgroundBlurMode: BackgroundBlurMode.acrylic,
       backgroundBlurSigma: 28,
       demoData: false,
-      microsoftClientId: AppInfo.defaultMicrosoftClientId,
+      microsoftClientId: null,
       defaultJavaPath: null,
       defaultMemoryMb: 4096,
       defaultJvmArgs: '-XX:+UseG1GC',

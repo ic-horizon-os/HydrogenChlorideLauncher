@@ -118,7 +118,7 @@ void main() {
     app.selectSettingsSection(SettingsSection.about);
     await _settle(tester, 'settings-about');
     expect(find.text('技术栈与依赖'), findsOneWidget);
-    expect(find.textContaining('0.1.0-alpha.1'), findsWidgets);
+    expect(find.textContaining('0.1.0-alpha.2'), findsWidgets);
 
     app.closeSettings();
     await _settle(tester, 'close-settings');
