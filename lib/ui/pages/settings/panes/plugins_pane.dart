@@ -92,12 +92,6 @@ class PluginsPane extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        const SettingsBanner(
-          message:
-              '插件目录结构：<plugins>/<插件 id>/plugin.json，可附带资源文件。'
-              '安装时会校验 id、版本、最低启动器版本与权限。卸载只删除插件目录。',
-        ),
-        const SizedBox(height: 16),
         if (plugins.isEmpty)
           EmptyState(
             icon: Icons.extension_outlined,

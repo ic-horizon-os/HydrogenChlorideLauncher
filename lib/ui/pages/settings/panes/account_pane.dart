@@ -49,12 +49,6 @@ class _AccountPaneState extends State<AccountPane> {
     super.dispose();
   }
 
-  static String _clientIdNote(AppState app) {
-    final String current = app.effectiveClientId ?? '';
-    if (current.isEmpty) return '未配置：登录前请填写 Azure 应用 ID';
-    return '自定义 ID：令牌只发给你注册的应用';
-  }
-
   Future<void> _saveClientId(AppState app) async {
     await app.setMicrosoftClientId(_clientId.text);
     if (!mounted) return;
@@ -251,21 +245,9 @@ class _AccountPaneState extends State<AccountPane> {
       children: <Widget>[
         SettingsPaneHeader(
           title: '登录信息',
-          description: 'Microsoft 账户与 Minecraft 登录。未登录时不能启动 Minecraft。',
-          trailing: MetaPill(
-            label: account == null ? '未登录' : '已登录',
-            icon: account == null
-                ? Icons.person_outline
-                : Icons.verified_user_outlined,
-            color: account == null ? palette.warning : palette.success,
-          ),
+          description: 'Microsoft 账户登录。',
         ),
         const SizedBox(height: 18),
-        SettingsBanner(
-          message:
-              '点「使用设备码登录」，启动器会给出一组代码；'
-              '打开 microsoft.com/link 输入即可完成登录。',
-        ),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 12),
           SettingsBanner(
@@ -408,13 +390,7 @@ class _AccountPaneState extends State<AccountPane> {
             children: <Widget>[
               SettingsRow(
                 title: 'Azure client ID',
-                subtitle:
-                    '${app.effectiveClientId ?? '未配置'}\n'
-                    '${_clientIdNote(app)}',
-                trailing: MetaPill(
-                  label: usingEnv ? '环境变量' : '本机设置',
-                  dense: true,
-                ),
+                subtitle: app.effectiveClientId ?? '未配置',
               ),
               SettingsDivider(),
               SettingsRow(
@@ -426,14 +402,6 @@ class _AccountPaneState extends State<AccountPane> {
                   onPressed: () =>
                       PlatformActions.openDirectory(app.paths.configDir.path),
                 ),
-              ),
-              const SizedBox(height: 8),
-              SettingsBanner(
-                message:
-                    '令牌保存在权限为 0600 的本地文件，暂未使用系统钥匙串。'
-                    '共享设备上请在用完后退出登录。',
-                icon: Icons.security_outlined,
-                tone: SettingsBannerTone.warning,
               ),
               const SizedBox(height: 12),
               Row(
@@ -455,26 +423,6 @@ class _AccountPaneState extends State<AccountPane> {
             ],
           ),
         ],
-        const SizedBox(height: 18),
-        SettingsCard(
-          title: '启动门禁',
-          children: <Widget>[
-            SettingsRow(
-              title: '未登录时禁止启动 Minecraft',
-              subtitle: '自定义程序与实用软件不受影响；Minecraft 与整合包需要登录。',
-              leading: Icon(
-                account == null ? Icons.lock_outline : Icons.lock_open_outlined,
-                size: 16,
-                color: account == null ? palette.warning : palette.success,
-              ),
-              trailing: MetaPill(
-                label: account == null ? '已启用' : '已满足',
-                color: account == null ? palette.warning : palette.success,
-                dense: true,
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -684,23 +632,9 @@ class _SignedInCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Text(
-                      account.name,
-                      style: FluentTheme.of(context).typography.title,
-                    ),
-                    const SizedBox(width: 8),
-                    MetaPill(
-                      label: account.ownsMinecraft
-                          ? 'Minecraft 档案正常'
-                          : '无 Minecraft 档案',
-                      color: account.ownsMinecraft
-                          ? palette.success
-                          : palette.warning,
-                      dense: true,
-                    ),
-                  ],
+                Text(
+                  account.name,
+                  style: FluentTheme.of(context).typography.title,
                 ),
                 const SizedBox(height: 4),
                 Text(

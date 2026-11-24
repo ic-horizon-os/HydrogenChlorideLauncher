@@ -23,19 +23,33 @@ class CoverArtService {
 
   Future<String>? _pending;
   String? _path;
+  bool _probed = false;
 
   File get cacheFile =>
       File(p.join(paths.dataDir.path, 'covers', 'java-bedrock.jpg'));
 
-  /// Cached file path, or null before the first download finishes.
-  String? get cachedPath => cacheFile.existsSync() ? cacheFile.path : null;
+  /// Path of the cached key art, or null while it is not on disk. Kept in
+  /// memory on purpose: hero builds read this every frame, and probing the
+  /// filesystem from build used to put sync disk I/O on the UI thread.
+  String? get cachedPath => _path;
 
   /// Downloads the cover the first time it is missing. Repeated calls share
   /// one in-flight request; a failed download throws so callers can fall back.
   Future<String> ensure() {
-    final String? cached = cachedPath;
-    if (cached != null) return Future<String>.value(cached);
-    return _pending ??= _download().whenComplete(() => _pending = null);
+    final String? resolved = _path;
+    if (resolved != null) return Future<String>.value(resolved);
+    return _pending ??= _probeAndDownload().whenComplete(() => _pending = null);
+  }
+
+  Future<String> _probeAndDownload() async {
+    if (!_probed) {
+      _probed = true;
+      if (await cacheFile.exists()) {
+        _path = cacheFile.path;
+        return _path!;
+      }
+    }
+    return _download();
   }
 
   Future<String> _download() async {

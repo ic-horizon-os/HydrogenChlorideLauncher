@@ -32,13 +32,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          args=(--notes "Linux x64 构建（Flutter/Dart，纯 Dart 后端）。解压后运行 bundle/hydrogen_chloride_launcher。")
+          # 有对应说明文件时使用它。
+          if [ -f "docs/release-notes/$GITHUB_REF_NAME.md" ]; then
+            args=(--notes-file "docs/release-notes/$GITHUB_REF_NAME.md")
+          fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" hcl-linux-x64.tar.gz --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
               hcl-linux-x64.tar.gz \
               --title "Hydrogen Chloride Launcher $GITHUB_REF_NAME" \
-              --notes "Linux x64 构建（Flutter/Dart，纯 Dart 后端）。解压后运行 bundle/hydrogen_chloride_launcher。"
+              "${args[@]}"
           fi
       - uses: actions/upload-artifact@v4
         if: "!startsWith(github.ref, 'refs/tags/v')"
@@ -46,7 +51,10 @@ jobs:
           name: hcl-linux-x64
           path: hcl-linux-x64.tar.gz
 
+  # 串行在 linux 之后：linux 先建 Release，这里只追加 Windows 产物，
+  # 两个 job 同时 create 会在 API 层撞车。
   windows:
+    needs: linux
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +64,22 @@ jobs:
       - name: Build
         shell: pwsh
         run: ./tool/build_windows.ps1
+      - name: Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME $env:HCL_WIN_ZIP --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME $env:HCL_WIN_ZIP `
+              --title "Hydrogen Chloride Launcher $env:GITHUB_REF_NAME" `
+              --notes "Windows x64 构建。解压后运行 hydrogen_chloride_launcher.exe。"
+          }
       - uses: actions/upload-artifact@v4
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         with:
           name: hcl-windows-x64
-          path: dist/hydrogen-chloride-launcher-0.1.0-alpha.1-windows-x64.zip
+          path: ${{ env.HCL_WIN_ZIP }}

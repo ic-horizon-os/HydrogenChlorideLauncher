@@ -37,7 +37,11 @@ class _BrowsePageState extends State<BrowsePage> {
   String _search = '';
 
   List<BrowseItem> _online = <BrowseItem>[];
-  bool _loading = false;
+
+  /// True from the moment a fetch starts until its results land; the grid
+  /// shows a loading placeholder for the whole window so the previous
+  /// category never lingers under the entrance animation.
+  bool _loading = true;
   bool _fetched = false;
   String? _error;
   Timer? _debounce;
@@ -78,6 +82,11 @@ class _BrowsePageState extends State<BrowsePage> {
     }
     final int id = ++_requestId;
     setState(() {
+      // Enter the loading state immediately: drop the previous category's
+      // results and reset the fetched marker so the placeholder shows for
+      // every in-flight request, not just the first one.
+      _online = <BrowseItem>[];
+      _fetched = false;
       _loading = true;
       _error = null;
     });
@@ -133,11 +142,6 @@ class _BrowsePageState extends State<BrowsePage> {
         _section == _BrowseSection.loader ||
         (_online.isEmpty &&
             (_error != null || (_fetched && demoItems.isNotEmpty)));
-    final List<BrowseItem> items = showDemo ? demoItems : _online;
-    final List<String> loaders = <String>{
-      ...app.browse.loadersFor(_category),
-      ..._online.expand((BrowseItem item) => item.loaders),
-    }.toList()..sort();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
@@ -254,32 +258,34 @@ class _BrowsePageState extends State<BrowsePage> {
                     ),
                   ),
                   const SizedBox(width: 14),
-                  Expanded(
-                    // Windows 11 style: replace instantly, play one entrance.
-                    // Cross-fading kept both heavy sections laid out at once.
-                    child: KeyedSubtree(
-                      key: ValueKey<_BrowseSection>(_section),
-                      child: PageBodyEntrance(
-                        duration: const Duration(milliseconds: 260),
-                        offset: 0.04,
-                        child: _isModrinth
-                            ? _modrinthContent(
-                                app,
-                                palette,
-                                showDemo: showDemo,
-                                items: items,
-                                loaders: loaders,
-                              )
-                            : const _VersionsSection(),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: _sectionBody(app, palette)),
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// The section body mounts its entrance only when content is ready. It
+  /// used to mount the moment the section switched, playing the entrance
+  /// over the previous category's items while the request was in flight;
+  /// now the loading placeholder owns the grid until results land, and the
+  /// entrance and content appear in the same frame.
+  Widget _sectionBody(AppState app, FluentPalette palette) {
+    if (_isModrinth && _loading) {
+      return _modrinthContent(app, palette, loading: true);
+    }
+    // Windows 11 style: replace instantly, play one entrance. Cross-fading
+    // kept both heavy sections laid out at once.
+    return PageBodyEntrance(
+      key: ValueKey<_BrowseSection>(_section),
+      duration: const Duration(milliseconds: 260),
+      offset: 0.04,
+      child: _isModrinth
+          ? _modrinthContent(app, palette, loading: false)
+          : const _VersionsSection(),
     );
   }
 
@@ -294,10 +300,24 @@ class _BrowsePageState extends State<BrowsePage> {
   Widget _modrinthContent(
     AppState app,
     FluentPalette palette, {
-    required bool showDemo,
-    required List<BrowseItem> items,
-    required List<String> loaders,
+    required bool loading,
   }) {
+    final List<BrowseItem> demoItems = app.browse.query(
+      category: _category,
+      search: _search,
+      loader: _loader == '全部' ? null : _loader,
+      sort: _sort,
+    );
+    final bool showDemo =
+        _section == _BrowseSection.loader ||
+        (_online.isEmpty &&
+            (_error != null || (_fetched && demoItems.isNotEmpty)));
+    final List<BrowseItem> items = showDemo ? demoItems : _online;
+    final List<String> loaders = <String>{
+      ...app.browse.loadersFor(_category),
+      ..._online.expand((BrowseItem item) => item.loaders),
+    }.toList()..sort();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -366,7 +386,7 @@ class _BrowsePageState extends State<BrowsePage> {
           ),
         const SizedBox(height: 14),
         Expanded(
-          child: _loading && !_fetched
+          child: loading
               ? const Center(child: ProgressRing(strokeWidth: 2))
               : _error != null && _online.isEmpty && !showDemo
               ? EmptyState(
@@ -847,6 +867,28 @@ class _ProjectDetailState extends State<_ProjectDetail> {
   String _stage = '';
   double _fraction = 0;
 
+  /// The dialog draws its own progress while installing; keep the bottom
+  /// task bar from painting the same install a second time. The state is
+  /// captured on suspend: dispose must not look ancestors up via context.
+  AppState? _suspendedApp;
+
+  void _suspendBar() {
+    if (_suspendedApp != null) return;
+    _suspendedApp = AppScope.read(context)..suspendTaskBar();
+  }
+
+  void _resumeBar() {
+    final AppState? app = _suspendedApp;
+    _suspendedApp = null;
+    app?.resumeTaskBar();
+  }
+
+  @override
+  void dispose() {
+    _resumeBar();
+    super.dispose();
+  }
+
   Future<void> _install() async {
     final AppEntry? target = _target;
     if (target == null || _installing) return;
@@ -856,6 +898,7 @@ class _ProjectDetailState extends State<_ProjectDetail> {
       _stage = '查询版本';
       _fraction = 0;
     });
+    _suspendBar();
     final String? message = await app.installFromModrinth(
       item: widget.item,
       entry: target,
@@ -868,6 +911,7 @@ class _ProjectDetailState extends State<_ProjectDetail> {
       },
     );
     if (!mounted) return;
+    _resumeBar();
     setState(() => _installing = false);
     if (message != null) {
       showAppMessage(context, message);
@@ -1071,7 +1115,7 @@ class _ProjectDetailState extends State<_ProjectDetail> {
             ),
             if (_installing) ...<Widget>[
               const SizedBox(height: 10),
-              ProgressBar(value: _fraction <= 0 ? null : _fraction),
+              HclProgressBar(fraction: _fraction),
               const SizedBox(height: 6),
               Text(
                 _stage,

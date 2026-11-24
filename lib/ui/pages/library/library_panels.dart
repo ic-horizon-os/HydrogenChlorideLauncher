@@ -49,13 +49,44 @@ class _LoaderPanelState extends State<LoaderPanel> {
   String _stage = '';
   String _detail = '';
   double _fraction = 0;
+  bool _barSuspended = false;
 
   LoaderKind get _kind => _kinds[_loader] ?? LoaderKind.fabric;
 
   @override
   void dispose() {
+    _resumeBar();
     _version.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant LoaderPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.entry.id != widget.entry.id) {
+      // The panel stays mounted across entry switches; re-seed the version
+      // field for the entry now in focus.
+      _version.text = widget.entry.minecraftVersion ?? '1.21.1';
+      setState(() {
+        _builds = <LoaderBuild>[];
+        _build = null;
+        _buildError = null;
+      });
+    }
+  }
+
+  /// The panel draws its own progress while installing; keep the bottom task
+  /// bar from painting the same install a second time.
+  void _suspendBar() {
+    if (_barSuspended) return;
+    _barSuspended = true;
+    widget.app.suspendTaskBar();
+  }
+
+  void _resumeBar() {
+    if (!_barSuspended) return;
+    _barSuspended = false;
+    widget.app.resumeTaskBar();
   }
 
   Future<void> _loadBuilds() async {
@@ -124,6 +155,7 @@ class _LoaderPanelState extends State<LoaderPanel> {
       _fraction = 0;
       _error = null;
     });
+    _suspendBar();
 
     final AppEntry? created;
     if (_kind == LoaderKind.optifine) {
@@ -144,6 +176,7 @@ class _LoaderPanelState extends State<LoaderPanel> {
       );
     }
     if (!mounted) return;
+    _resumeBar();
     setState(() => _installing = false);
     if (created == null) {
       setState(() => _error = widget.app.lastError ?? '安装失败。');
@@ -380,7 +413,7 @@ class _LoaderPanelState extends State<LoaderPanel> {
                 ],
                 if (_installing) ...<Widget>[
                   const SizedBox(height: 14),
-                  ProgressBar(value: _fraction <= 0 ? null : _fraction),
+                  HclProgressBar(fraction: _fraction),
                   const SizedBox(height: 6),
                   Text(
                     _detail.isEmpty ? _stage : '$_stage · $_detail',
@@ -408,12 +441,6 @@ class _LoaderPanelState extends State<LoaderPanel> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          const SettingsBanner(
-            message:
-                'Forge、NeoForge 会下载官方安装器并在后台用 Java 执行，'
-                '需要几分钟；Fabric 直接下载元数据与库文件。',
-          ),
         ],
       ),
     );
@@ -431,7 +458,10 @@ class ModsPanel extends StatefulWidget {
 }
 
 class _ModsPanelState extends State<ModsPanel> {
-  List<File> _mods = <File>[];
+  /// A mod row with its size read during the scan; item builders must not
+  /// touch the disk, so sizes live with the row.
+  List<(File, int)> _mods = <(File, int)>[];
+  int _scanToken = 0;
 
   Directory get _dir => Directory(
     p.join(
@@ -452,22 +482,28 @@ class _ModsPanelState extends State<ModsPanel> {
     if (oldWidget.entry.id != widget.entry.id) _reload();
   }
 
-  void _reload() {
-    final List<File> files = <File>[];
+  /// Async directory walk: a few hundred jars must not freeze the panel
+  /// while the scan runs, and the previous list stays visible until the new
+  /// one lands.
+  Future<void> _reload() async {
+    final int token = ++_scanToken;
+    final List<(File, int)> files = <(File, int)>[];
     try {
-      if (_dir.existsSync()) {
-        for (final FileSystemEntity entity in _dir.listSync()) {
-          if (entity is File && entity.path.endsWith('.jar')) {
-            files.add(entity);
-          } else if (entity is File && entity.path.endsWith('.jar.disabled')) {
-            files.add(entity);
+      if (await _dir.exists()) {
+        await for (final FileSystemEntity entity in _dir.list()) {
+          if (entity is File &&
+              (entity.path.endsWith('.jar') ||
+                  entity.path.endsWith('.jar.disabled'))) {
+            final int size = await entity.length();
+            files.add((entity, size));
           }
         }
       }
     } on FileSystemException {
       // Keep the previous list if the directory cannot be read.
     }
-    files.sort((File a, File b) => a.path.compareTo(b.path));
+    files.sort(((File, int) a, (File, int) b) => a.$1.path.compareTo(b.$1.path));
+    if (!mounted || token != _scanToken) return;
     setState(() => _mods = files);
   }
 
@@ -604,7 +640,8 @@ class _ModsPanelState extends State<ModsPanel> {
                       separatorBuilder: (BuildContext context, int index) =>
                           Divider(),
                       itemBuilder: (BuildContext context, int index) {
-                        final File file = _mods[index];
+                        final (File, int) mod = _mods[index];
+                        final File file = mod.$1;
                         final bool disabled = file.path.endsWith('.disabled');
                         final String name = p.basename(
                           disabled
@@ -614,7 +651,6 @@ class _ModsPanelState extends State<ModsPanel> {
                                 )
                               : file.path,
                         );
-                        final int bytes = file.lengthSync();
                         return ListTile(
                           leading: Icon(
                             disabled ? FluentIcons.cancel : FluentIcons.puzzle,
@@ -622,7 +658,7 @@ class _ModsPanelState extends State<ModsPanel> {
                           ),
                           title: Text(name),
                           subtitle: Text(
-                            '${formatBytes(bytes)} · ${disabled ? '已禁用' : '已启用'}',
+                            '${formatBytes(mod.$2)} · ${disabled ? '已禁用' : '已启用'}',
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -661,7 +697,10 @@ class WorldsPanel extends StatefulWidget {
 }
 
 class _WorldsPanelState extends State<WorldsPanel> {
-  List<Directory> _worlds = <Directory>[];
+  /// A world row with its modification time read during the scan; item
+  /// builders must not touch the disk.
+  List<(Directory, DateTime)> _worlds = <(Directory, DateTime)>[];
+  int _scanToken = 0;
 
   Directory get _dir => Directory(
     p.join(
@@ -682,18 +721,27 @@ class _WorldsPanelState extends State<WorldsPanel> {
     if (oldWidget.entry.id != widget.entry.id) _reload();
   }
 
-  void _reload() {
-    final List<Directory> worlds = <Directory>[];
+  /// Async directory walk so a large saves folder cannot freeze the panel;
+  /// the previous list stays visible until the new one lands.
+  Future<void> _reload() async {
+    final int token = ++_scanToken;
+    final List<(Directory, DateTime)> worlds = <(Directory, DateTime)>[];
     try {
-      if (_dir.existsSync()) {
-        for (final FileSystemEntity entity in _dir.listSync()) {
-          if (entity is Directory) worlds.add(entity);
+      if (await _dir.exists()) {
+        await for (final FileSystemEntity entity in _dir.list()) {
+          if (entity is Directory) {
+            worlds.add((entity, (await entity.stat()).modified));
+          }
         }
       }
     } on FileSystemException {
       // Keep the previous list.
     }
-    worlds.sort((Directory a, Directory b) => a.path.compareTo(b.path));
+    worlds.sort(
+      ((Directory, DateTime) a, (Directory, DateTime) b) =>
+          a.$1.path.compareTo(b.$1.path),
+    );
+    if (!mounted || token != _scanToken) return;
     setState(() => _worlds = worlds);
   }
 
@@ -837,11 +885,11 @@ class _WorldsPanelState extends State<WorldsPanel> {
                       separatorBuilder: (BuildContext context, int index) =>
                           Divider(),
                       itemBuilder: (BuildContext context, int index) {
-                        final Directory world = _worlds[index];
-                        final DateTime modified = world.statSync().modified;
+                        final (Directory, DateTime) world = _worlds[index];
+                        final DateTime modified = world.$2;
                         return ListTile(
                           leading: const Icon(FluentIcons.globe, size: 16),
-                          title: Text(p.basename(world.path)),
+                          title: Text(p.basename(world.$1.path)),
                           subtitle: Text('修改于 ${formatRelativeTime(modified)}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -849,23 +897,23 @@ class _WorldsPanelState extends State<WorldsPanel> {
                               FluentIconButton(
                                 icon: FluentIcons.save,
                                 tooltip: '备份',
-                                onPressed: () => _backup(world),
+                                onPressed: () => _backup(world.$1),
                               ),
                               FluentIconButton(
                                 icon: FluentIcons.repair,
                                 tooltip: '检查并修复',
-                                onPressed: () => _repair(world),
+                                onPressed: () => _repair(world.$1),
                               ),
                               FluentIconButton(
                                 icon: FluentIcons.folder,
                                 tooltip: '打开',
                                 onPressed: () =>
-                                    PlatformActions.openDirectory(world.path),
+                                    PlatformActions.openDirectory(world.$1.path),
                               ),
                               FluentIconButton(
                                 icon: FluentIcons.delete,
                                 tooltip: '删除',
-                                onPressed: () => _delete(world),
+                                onPressed: () => _delete(world.$1),
                               ),
                             ],
                           ),
@@ -904,11 +952,13 @@ class _SkinsPanelState extends State<SkinsPanel> {
     _reload();
   }
 
-  void _reload() {
+  /// Async directory walk; the previous list stays visible until the new
+  /// one lands.
+  Future<void> _reload() async {
     final List<File> files = <File>[];
     try {
-      if (_dir.existsSync()) {
-        for (final FileSystemEntity entity in _dir.listSync()) {
+      if (await _dir.exists()) {
+        await for (final FileSystemEntity entity in _dir.list()) {
           if (entity is File &&
               RegExp(
                 r'\.(png|jpg|jpeg)$',
@@ -922,6 +972,7 @@ class _SkinsPanelState extends State<SkinsPanel> {
       // Keep the previous list.
     }
     files.sort((File a, File b) => a.path.compareTo(b.path));
+    if (!mounted) return;
     setState(() {
       _skins = files;
       if (_selected == null && files.isNotEmpty) _selected = files.first;
@@ -1107,6 +1158,7 @@ class _SkinsPanelState extends State<SkinsPanel> {
                                 child: Image.file(
                                   _selected!,
                                   fit: BoxFit.contain,
+                                  cacheWidth: 640,
                                   filterQuality: FilterQuality.medium,
                                 ),
                               ),
@@ -1153,6 +1205,14 @@ class _CrashPanelState extends State<CrashPanel> {
   void initState() {
     super.initState();
     _analyze();
+  }
+
+  @override
+  void didUpdateWidget(covariant CrashPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The panel stays mounted across entry switches; re-run the analysis
+    // for the entry now in focus instead of showing the previous one's.
+    if (oldWidget.entry.id != widget.entry.id) _analyze();
   }
 
   Future<void> _analyze() async {

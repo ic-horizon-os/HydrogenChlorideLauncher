@@ -385,7 +385,7 @@ class _UpdateCardState extends State<_UpdateCard> {
         if (updates.stage == UpdateStage.downloading ||
             updates.stage == UpdateStage.applying) ...<Widget>[
           const SizedBox(height: 10),
-          ProgressBar(value: updates.progress <= 0 ? null : updates.progress),
+          HclProgressBar(fraction: updates.progress),
         ],
         if (_summary != null) ...<Widget>[
           const SizedBox(height: 10),

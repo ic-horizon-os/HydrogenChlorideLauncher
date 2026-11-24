@@ -57,6 +57,11 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+  // Impeller (GL) has no raster cache: full-window effects and first-seen
+  // pipelines re-ran every frame, costing 50-100ms during page entrances.
+  // Stay on Skia, whose raster cache matches the app's RepaintBoundary
+  // layering. Remove when Impeller GL reaches parity on desktop.
+  fl_dart_project_set_enable_impeller(project, FALSE);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;

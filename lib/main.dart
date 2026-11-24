@@ -1,10 +1,31 @@
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'core/constants.dart';
 import 'state/app_scope.dart';
 import 'state/app_state.dart';
+
+/// Profiling probe (profile builds only): `--dart-define=HCL_PERF_TAB=library`
+/// auto-switches to that tab 2.5s after startup and prints build/raster frame
+/// times so library-entry jank can be attributed. Inert when undefined.
+const String _perfTab = String.fromEnvironment('HCL_PERF_TAB');
+
+void _perfTimings(List<FrameTiming> timings) {
+  for (final FrameTiming t in timings) {
+    final int totalMs = t.totalSpan.inMilliseconds;
+    if (totalMs < 18) continue;
+    debugPrint(
+      '[perf] frame=${t.frameNumber} '
+      'build=${t.buildDuration.inMilliseconds}ms '
+      'raster=${t.rasterDuration.inMilliseconds}ms '
+      'total=${totalMs}ms '
+      'layerCache=${t.layerCacheCount}/${t.layerCacheMegabytes.toStringAsFixed(1)}MB '
+      'pictureCache=${t.pictureCacheCount}/${t.pictureCacheMegabytes.toStringAsFixed(1)}MB',
+    );
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +34,18 @@ Future<void> main() async {
   try {
     final AppState state = await AppState.bootstrap();
     runApp(AppScope(notifier: state, child: const HclApp()));
+    if (_perfTab.isNotEmpty) {
+      SchedulerBinding.instance.addTimingsCallback(_perfTimings);
+      final HomeTab tab = HomeTab.values.firstWhere(
+        (HomeTab t) => t.name == _perfTab,
+        orElse: () => HomeTab.library,
+      );
+      debugPrint('[perf] armed, switching to ${tab.name} in 2.5s');
+      Future<void>.delayed(const Duration(milliseconds: 2500), () {
+        debugPrint('[perf] switch ${tab.name} now');
+        state.selectTab(tab);
+      });
+    }
   } on Object catch (error, stackTrace) {
     debugPrint('Bootstrap failed: $error\n$stackTrace');
     runApp(_BootstrapErrorApp(message: '$error'));

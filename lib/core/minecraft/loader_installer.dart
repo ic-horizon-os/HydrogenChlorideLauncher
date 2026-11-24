@@ -239,11 +239,20 @@ class LoaderInstaller {
     String loaderVersion, {
     void Function(InstallProgress progress)? onProgress,
     String? javaExecutable,
+    bool Function()? isCancelled,
   }) async {
     void report(String stage, double fraction, [String detail = '']) {
       onProgress?.call(
         InstallProgress(stage: stage, fraction: fraction, detail: detail),
       );
+    }
+
+    // A cancelled download batch stops quietly; phase boundaries re-check so
+    // the run never proceeds to the next phase after a cancellation.
+    void ensureNotCancelled() {
+      if (isCancelled?.call() ?? false) {
+        throw const InstallCancelled();
+      }
     }
 
     // The loader version JSON inherits from vanilla, so vanilla must exist.
@@ -263,15 +272,22 @@ class LoaderInstaller {
       report('安装原版 $gameVersion', 0.01);
       await vanilla.installVanilla(
         gameVersion,
+        isCancelled: isCancelled,
         onProgress: (InstallProgress progress) {
           report('安装原版 $gameVersion', progress.fraction * 0.5, progress.detail);
         },
       );
+      ensureNotCancelled();
     }
 
     switch (loader) {
       case LoaderKind.fabric:
-        return _installFabric(gameVersion, loaderVersion, loaderReport);
+        return _installFabric(
+          gameVersion,
+          loaderVersion,
+          loaderReport,
+          isCancelled,
+        );
       case LoaderKind.forge:
       case LoaderKind.neoforge:
         return _installForge(
@@ -280,6 +296,7 @@ class LoaderInstaller {
           loaderVersion,
           loaderReport,
           javaExecutable,
+          isCancelled,
         );
       case LoaderKind.optifine:
         throw const InstallException('OptiFine 需要手动导入安装文件。');
@@ -290,6 +307,7 @@ class LoaderInstaller {
     String gameVersion,
     String loaderVersion,
     void Function(String, double, [String]) report,
+    bool Function()? isCancelled,
   ) async {
     report('获取 Fabric 版本信息', 0.05);
     final Map<String, dynamic> json = await downloader.fetchJson(
@@ -334,6 +352,7 @@ class LoaderInstaller {
     }
     final DownloadBatchResult result = await downloader.run(
       libraries,
+      isCancelled: isCancelled,
       onProgress: (DownloadProgress progress) {
         report(
           '下载 Fabric 库文件',
@@ -342,6 +361,9 @@ class LoaderInstaller {
         );
       },
     );
+    if (isCancelled?.call() ?? false) {
+      throw const InstallCancelled();
+    }
     if (!result.ok) {
       throw InstallException('Fabric 库下载失败：${result.failures.first.error}');
     }
@@ -365,6 +387,7 @@ class LoaderInstaller {
     String loaderVersion,
     void Function(String, double, [String]) report,
     String? javaExecutable,
+    bool Function()? isCancelled,
   ) async {
     final String java = javaExecutable ?? '';
     if (java.isEmpty) {
@@ -392,7 +415,10 @@ class LoaderInstaller {
     report('下载 ${loader.label} 安装器', 0.1);
     final DownloadBatchResult install = await downloader.run(<DownloadRequest>[
       DownloadRequest(url: url, destination: installerFile.path),
-    ]);
+    ], isCancelled: isCancelled);
+    if (isCancelled?.call() ?? false) {
+      throw const InstallCancelled();
+    }
     if (!install.ok) {
       throw InstallException(
         '${loader.label} 安装器下载失败（$url）：${install.failures.first.error}',
@@ -413,7 +439,10 @@ class LoaderInstaller {
     }
 
     // The installer jar drives its own output; hold a labelled plateau here
-    // rather than a stale fraction.
+    // rather than a stale fraction. The process itself cannot be cancelled.
+    if (isCancelled?.call() ?? false) {
+      throw const InstallCancelled();
+    }
     report('运行 ${loader.label} 安装器', 0.5);
     final DateTime installedSince = DateTime.now().subtract(
       const Duration(minutes: 5),

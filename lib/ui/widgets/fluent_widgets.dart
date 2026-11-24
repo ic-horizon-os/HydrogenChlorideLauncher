@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
@@ -556,6 +554,41 @@ class _NavListTileState extends State<NavListTile> {
   }
 }
 
+/// fluent_ui's [ProgressBar.value] is a 0–100 scale (it divides by 100
+/// internally), while the launcher tracks 0..1 fractions everywhere. One
+/// wrapper does the conversion so no call site can get the scale wrong
+/// again. Non-positive fractions render indeterminate, as before.
+class HclProgressBar extends StatelessWidget {
+  const HclProgressBar({
+    super.key,
+    this.fraction,
+    this.activeColor,
+    this.backgroundColor,
+    this.strokeWidth = 4.5,
+  });
+
+  /// 0..1 completion, or non-positive for an indeterminate bar.
+  final double? fraction;
+  final Color? activeColor;
+  final Color? backgroundColor;
+
+  /// fluent_ui's own bar default.
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final double? value = fraction;
+    return ProgressBar(
+      value: value == null || value <= 0
+          ? null
+          : (value.clamp(0.0, 1.0) * 100),
+      activeColor: activeColor,
+      backgroundColor: backgroundColor,
+      strokeWidth: strokeWidth,
+    );
+  }
+}
+
 /// Stage list rendered the way PCL shows an install: the current phase on top,
 /// a determinate bar, and the file or count being worked on underneath.
 class InstallStageProgress extends StatelessWidget {
@@ -604,7 +637,7 @@ class InstallStageProgress extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        ProgressBar(value: fraction <= 0 ? null : fraction.clamp(0, 1)),
+        HclProgressBar(fraction: fraction),
         if (detail.isNotEmpty) ...<Widget>[
           const SizedBox(height: 7),
           Text(
@@ -630,12 +663,18 @@ class SlidingNavList extends StatefulWidget {
     required this.itemCount,
     required this.selectedIndex,
     required this.itemBuilder,
+    this.shrinkWrap = false,
   });
 
   final int itemCount;
   final int selectedIndex;
   final Widget Function(BuildContext context, int index, Key anchorKey)
   itemBuilder;
+
+  /// True when the host column sizes itself to the rows (library list):
+  /// the list then takes its content height and scrolls only past it,
+  /// instead of stretching a mostly-empty card to the page height.
+  final bool shrinkWrap;
 
   @override
   State<SlidingNavList> createState() => _SlidingNavListState();
@@ -644,10 +683,19 @@ class SlidingNavList extends StatefulWidget {
 class _SlidingNavListState extends State<SlidingNavList>
     with SingleTickerProviderStateMixin {
   late final PageStorageBucket _bucket = PageStorageBucket();
-  late final List<GlobalKey> _keys = List<GlobalKey>.generate(
-    widget.itemCount,
-    (_) => GlobalKey(),
-  );
+
+  /// One growable key per row. `late final` keys sized to the first
+  /// itemCount crashed with a RangeError the moment the library grew past
+  /// its initial entry count; keys are now created on demand and pruned
+  /// only past the current count, so any growth or shrink stays in range.
+  final List<GlobalKey> _keys = <GlobalKey>[];
+
+  GlobalKey _keyFor(int index) {
+    while (_keys.length <= index) {
+      _keys.add(GlobalKey());
+    }
+    return _keys[index];
+  }
 
   /// Wraps the list itself so row offsets are measured in the same space.
   final GlobalKey _listKey = GlobalKey();
@@ -671,8 +719,16 @@ class _SlidingNavListState extends State<SlidingNavList>
   @override
   void didUpdateWidget(covariant SlidingNavList old) {
     super.didUpdateWidget(old);
+    if (_keys.length > widget.itemCount) {
+      _keys.removeRange(widget.itemCount, _keys.length);
+    }
+    if (_previous >= widget.itemCount) {
+      // The anchor row was deleted; re-resolve against the new selection.
+      _previous = widget.selectedIndex;
+    }
     if (old.selectedIndex != widget.selectedIndex) {
-      _previous = old.selectedIndex;
+      final int lastIndex = widget.itemCount <= 0 ? 0 : widget.itemCount - 1;
+      _previous = old.selectedIndex.clamp(0, lastIndex);
       _controller
         ..value = 0
         ..forward();
@@ -711,42 +767,50 @@ class _SlidingNavListState extends State<SlidingNavList>
           child: ListView.builder(
             key: _listKey,
             padding: EdgeInsets.zero,
+            shrinkWrap: widget.shrinkWrap,
+            physics: widget.shrinkWrap
+                ? const ClampingScrollPhysics()
+                : null,
             itemCount: widget.itemCount,
             itemBuilder: (BuildContext context, int index) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: widget.itemBuilder(context, index, _keys[index]),
+              child: widget.itemBuilder(context, index, _keyFor(index)),
             ),
           ),
         ),
         Positioned.fill(
           child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _curve,
-              builder: (BuildContext context, Widget? child) {
-                final double? to = _centerOf(widget.selectedIndex);
-                if (to == null) return const SizedBox.shrink();
-                final double? from = _centerOf(_previous);
-                final double t = _controller.isAnimating ? _curve.value : 1;
-                final double centerY = from == null
-                    ? to
-                    : from + (to - from) * t;
-                return Stack(
-                  children: <Widget>[
-                    Positioned(
-                      left: 4,
-                      top: centerY - 8,
-                      width: 3,
-                      height: 16,
-                      child: child!,
-                    ),
-                  ],
-                );
-              },
-              child: DecoratedBox(
-                key: const ValueKey<String>('sidebar-selection-indicator'),
-                decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: BorderRadius.circular(100),
+            // The bar repaints every frame of its slide; the boundary keeps
+            // those frames from re-recording the list beneath it.
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _curve,
+                builder: (BuildContext context, Widget? child) {
+                  final double? to = _centerOf(widget.selectedIndex);
+                  if (to == null) return const SizedBox.shrink();
+                  final double? from = _centerOf(_previous);
+                  final double t = _controller.isAnimating ? _curve.value : 1;
+                  final double centerY = from == null
+                      ? to
+                      : from + (to - from) * t;
+                  return Stack(
+                    children: <Widget>[
+                      Positioned(
+                        left: 4,
+                        top: centerY - 8,
+                        width: 3,
+                        height: 16,
+                        child: child!,
+                      ),
+                    ],
+                  );
+                },
+                child: DecoratedBox(
+                  key: const ValueKey<String>('sidebar-selection-indicator'),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
                 ),
               ),
             ),
@@ -988,15 +1052,15 @@ class BottomTaskBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(FluentTokens.radius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 9, 8, 9),
-            decoration: BoxDecoration(
-              color: palette.surface.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(FluentTokens.radius),
-              border: Border.all(color: palette.border),
-            ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 9, 8, 9),
+          decoration: BoxDecoration(
+            // Near-opaque surface: a BackdropFilter here was invisible but
+            // Impeller still re-ran it every frame the bar animated.
+            color: palette.surface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(FluentTokens.radius),
+            border: Border.all(color: palette.border),
+          ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -1059,8 +1123,8 @@ class BottomTaskBar extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                ProgressBar(
-                  value: done && task.error == null ? 1 : task.fraction,
+                HclProgressBar(
+                  fraction: done && task.error == null ? 1 : task.fraction,
                   activeColor: barColor,
                   backgroundColor: palette.border,
                   strokeWidth: 3,
@@ -1069,8 +1133,7 @@ class BottomTaskBar extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

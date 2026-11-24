@@ -50,6 +50,11 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
   String _detail = '';
   double _fraction = 0;
 
+  /// Flipped by the 取消 button and by dialog disposal; the install run
+  /// polls it and stops its downloads.
+  bool _cancelRequested = false;
+  bool _barSuspended = false;
+
   String _loaderChoice = '不安装加载器';
   List<LoaderBuild> _builds = <LoaderBuild>[];
   String? _build;
@@ -58,10 +63,33 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
 
   LoaderKind? get _loader => _loaders[_loaderChoice];
 
+  /// This form draws its own progress while installing; keep the bottom
+  /// task bar from painting the same install a second time.
+  void _suspendBar() {
+    if (_barSuspended) return;
+    _barSuspended = true;
+    widget.app.suspendTaskBar();
+  }
+
+  void _resumeBar() {
+    if (!_barSuspended) return;
+    _barSuspended = false;
+    widget.app.resumeTaskBar();
+  }
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    // Closing the dialog mid-install is a cancellation: without this the
+    // install kept downloading in the background.
+    _cancelRequested = true;
+    _resumeBar();
+    super.dispose();
   }
 
   /// Loader builds for the currently selected game version.
@@ -133,12 +161,15 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
     if (version == null || _installing) return;
     setState(() {
       _installing = true;
+      _cancelRequested = false;
       _stage = '准备';
       _detail = '';
       _fraction = 0;
     });
+    _suspendBar();
     final AppEntry? created = await widget.app.installVersion(
       version,
+      isCancelled: () => _cancelRequested,
       onProgress: (String stage, double fraction, String detail) {
         if (!mounted) return;
         setState(() {
@@ -151,9 +182,12 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
     );
     if (!mounted) return;
     if (created == null) {
+      _resumeBar();
       setState(() {
         _installing = false;
-        _error = widget.app.lastError ?? '安装失败。';
+        if (!_cancelRequested) {
+          _error = widget.app.lastError ?? '安装失败。';
+        }
       });
       return;
     }
@@ -165,6 +199,7 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
         loader,
         version,
         build,
+        isCancelled: () => _cancelRequested,
         onProgress: (String stage, double fraction, String detail) {
           if (!mounted) return;
           setState(() {
@@ -175,17 +210,21 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
         },
       );
       if (!mounted) return;
+      _resumeBar();
       setState(() => _installing = false);
       if (withLoader == null) {
-        setState(
-          () => _error = '原版已安装，但加载器安装失败：${widget.app.lastError ?? '未知错误'}',
-        );
+        if (!_cancelRequested) {
+          setState(
+            () => _error = '原版已安装，但加载器安装失败：${widget.app.lastError ?? '未知错误'}',
+          );
+        }
         return;
       }
       _finish(withLoader);
       return;
     }
 
+    _resumeBar();
     setState(() => _installing = false);
     _finish(created);
   }
@@ -314,9 +353,17 @@ class _VersionInstallFormState extends State<VersionInstallForm> {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Button(
-                  onPressed: _installing
+                  // During an install this aborts it: the run polls the
+                  // cancel flag and stops its downloads.
+                  onPressed: _cancelRequested
                       ? null
-                      : () => Navigator.of(context).pop(),
+                      : () {
+                          if (_installing) {
+                            setState(() => _cancelRequested = true);
+                          } else {
+                            Navigator.of(context).pop();
+                          }
+                        },
                   child: const Text('取消'),
                 ),
                 const SizedBox(width: 8),

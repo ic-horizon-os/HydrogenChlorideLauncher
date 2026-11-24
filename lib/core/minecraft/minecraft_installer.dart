@@ -32,6 +32,15 @@ class InstallException implements Exception {
   String toString() => message;
 }
 
+/// Thrown by install pipelines when the user cancels. Callers finish the
+/// task quietly instead of surfacing an error.
+class InstallCancelled implements Exception {
+  const InstallCancelled();
+
+  @override
+  String toString() => '已取消安装。';
+}
+
 /// Downloads and lays out a vanilla Minecraft version under a `.minecraft`
 /// root: version JSON + client jar, libraries, natives and asset objects.
 class MinecraftInstaller {
@@ -80,8 +89,17 @@ class MinecraftInstaller {
       );
     }
 
+    // Cancelled batches stop downloading but report success; every phase
+    // boundary re-checks so a cancelled run never proceeds to the next one.
+    void ensureNotCancelled() {
+      if (isCancelled?.call() ?? false) {
+        throw const InstallCancelled();
+      }
+    }
+
     report('获取版本清单', 0.02);
     final VersionManifest manifest = await fetchManifest();
+    ensureNotCancelled();
     final VersionManifestEntry? entry = manifest.find(versionId);
     if (entry == null) {
       throw InstallException('版本清单中没有 $versionId。');
@@ -91,6 +109,7 @@ class MinecraftInstaller {
     final Map<String, dynamic> versionRaw = await downloader.fetchJson(
       mirror.rewrite(entry.url),
     );
+    ensureNotCancelled();
     final VersionJson version = VersionJson.fromJson(versionRaw);
     if (version.mainClass.isEmpty) {
       throw InstallException('$versionId 的版本 JSON 缺少 mainClass。');
@@ -177,6 +196,7 @@ class MinecraftInstaller {
     if (!libraryResult.ok) {
       throw InstallException('下载失败：${libraryResult.failures.first.error}');
     }
+    ensureNotCancelled();
 
     if (nativeRequests.isNotEmpty) {
       report('解压 natives', 0.56, '${nativeRequests.length} 个压缩包');
@@ -207,6 +227,7 @@ class MinecraftInstaller {
           excluded: <String>['META-INF/'],
         );
       }
+      ensureNotCancelled();
     }
 
     final DownloadInfo? assetIndex = version.assetIndex;
@@ -257,6 +278,7 @@ class MinecraftInstaller {
       if (!assetResult.ok) {
         throw InstallException('资源下载失败：${assetResult.failures.first.error}');
       }
+      ensureNotCancelled();
       await writeLegacyAssetsIfNeeded(
         root: root,
         assetsIndexName: version.assets,

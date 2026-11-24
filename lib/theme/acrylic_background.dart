@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:fluent_ui/fluent_ui.dart';
 
@@ -71,79 +70,87 @@ class _AcrylicBackgroundState extends State<AcrylicBackground> {
         backgroundBlur &&
         widget.settings.backgroundBlurMode == BackgroundBlurMode.acrylic;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        // Isolate the static backdrop behind its own repaint boundary: every
-        // animated pixel above (page entrances, hovers, progress bars) must
-        // not re-record the image, the 2600-rect noise layer or the gradient
-        // — those only change when the settings themselves change.
-        RepaintBoundary(
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              ColoredBox(color: palette.background),
-              if (hasImage)
-                Image.file(
-                  File(imagePath!),
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.medium,
-                  errorBuilder:
-                      (BuildContext context, Object error, StackTrace? stack) {
-                        return _AccentMesh(
-                          accent: palette.accent,
-                          isDark: palette.isDark,
-                        );
-                      },
-                )
-              else
-                _AccentMesh(accent: palette.accent, isDark: palette.isDark),
-              if (backgroundBlur)
-                ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: widget.settings.backgroundBlurSigma,
-                      sigmaY: widget.settings.backgroundBlurSigma,
-                    ),
-                    child: ColoredBox(
-                      color: palette.background.withValues(alpha: opacity),
-                    ),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // Frosted look without a runtime BackdropFilter: Impeller re-runs
+        // backdrop filters on every frame (no raster cache), which cost
+        // 50-100ms per animation frame with a full-window sigma-28 blur.
+        // Decoding the image tiny and letting upscale filtering smooth it
+        // bakes the same frosted look into one cached texture.
+        final int cacheWidth = backgroundBlur
+            ? (constraints.maxWidth / (1 + widget.settings.backgroundBlurSigma / 6))
+                  .clamp(90, 1920)
+                  .round()
+            : 1920;
+        return Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            // Isolate the static backdrop behind its own repaint boundary:
+            // every animated pixel above (page entrances, hovers, progress
+            // bars) must not re-record the image, the noise layer or the
+            // gradient — those only change when the settings change.
+            RepaintBoundary(
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  ColoredBox(color: palette.background),
+                  if (hasImage)
+                    Image.file(
+                      File(imagePath!),
+                      fit: BoxFit.cover,
+                      cacheWidth: cacheWidth,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder:
+                          (
+                            BuildContext context,
+                            Object error,
+                            StackTrace? stack,
+                          ) {
+                            return _AccentMesh(
+                              accent: palette.accent,
+                              isDark: palette.isDark,
+                            );
+                          },
+                    )
+                  else
+                    _AccentMesh(accent: palette.accent, isDark: palette.isDark),
+                  ColoredBox(
+                    color: palette.background.withValues(alpha: opacity),
                   ),
-                )
-              else
-                ColoredBox(color: palette.background.withValues(alpha: opacity)),
-              if (acrylicNoise)
-                IgnorePointer(
-                  child: CustomPaint(
-                    painter: _AcrylicNoisePainter(isDark: palette.isDark),
-                  ),
-                ),
-              IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        palette.background.withValues(
-                          alpha: palette.isDark ? 0.42 : 0.5,
+                  if (acrylicNoise)
+                    IgnorePointer(
+                      child: CustomPaint(
+                        painter: _AcrylicNoisePainter(isDark: palette.isDark),
+                      ),
+                    ),
+                  IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: <Color>[
+                            palette.background.withValues(
+                              alpha: palette.isDark ? 0.42 : 0.5,
+                            ),
+                            palette.background.withValues(alpha: 0.06),
+                            palette.background.withValues(
+                              alpha: palette.isDark ? 0.55 : 0.62,
+                            ),
+                          ],
+                          stops: const <double>[0, 0.55, 1],
                         ),
-                        palette.background.withValues(alpha: 0.06),
-                        palette.background.withValues(
-                          alpha: palette.isDark ? 0.55 : 0.62,
-                        ),
-                      ],
-                      stops: const <double>[0, 0.55, 1],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-        ),
-        // And keep app-content repaints from dirtying the backdrop either.
-        RepaintBoundary(child: widget.child),
-      ],
+            ),
+            // And keep app-content repaints from dirtying the backdrop either.
+            RepaintBoundary(child: widget.child),
+          ],
+        );
+      },
     );
   }
 }

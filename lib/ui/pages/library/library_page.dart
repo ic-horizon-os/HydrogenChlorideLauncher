@@ -40,7 +40,6 @@ class _LibraryPageState extends State<LibraryPage> {
   Widget build(BuildContext context) {
     final AppState app = AppScope.of(context);
     final List<AppEntry> entries = app.visibleEntries;
-    final AppEntry? selected = app.selectedEntry;
 
     return FlyoutTarget(
       controller: _flyoutController,
@@ -90,6 +89,8 @@ class _LibraryPageState extends State<LibraryPage> {
             ),
           ),
         ),
+        // Selection lives in its own notifier: switching entries rebuilds
+        // this subtree only, not the whole shell.
         content: PageBodyEntrance(
           child: entries.isEmpty
               ? EmptyState(
@@ -103,98 +104,135 @@ class _LibraryPageState extends State<LibraryPage> {
                     onPressed: () => _installVersion(context, app),
                   ),
                 )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    SizedBox(
-                      width: 320,
-                      child: Padding(
-                        padding: const EdgeInsetsDirectional.fromSTEB(
-                          24,
-                          8,
-                          16,
-                          18,
-                        ),
-                        child: Card(
-                          padding: const EdgeInsets.all(6),
-                          margin: EdgeInsets.zero,
-                          child: SlidingNavList(
-                            itemCount: entries.length,
-                            selectedIndex: entries.indexWhere(
-                              (AppEntry e) => e.id == selected?.id,
+              : ListenableBuilder(
+                  listenable: app.librarySelection,
+                  builder: (BuildContext context, Widget? _) {
+                    final AppEntry? selected = app.selectedEntry;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        // The list card sizes itself to its rows: a stretched
+                        // full-height card left an empty grey face behind
+                        // whenever entries were deleted.
+                        Align(
+                          alignment: AlignmentDirectional.topStart,
+                          child: SizedBox(
+                            width: 320,
+                            child: Padding(
+                              padding: const EdgeInsetsDirectional.fromSTEB(
+                                24,
+                                8,
+                                16,
+                                18,
+                              ),
+                              child: Card(
+                                padding: const EdgeInsets.all(6),
+                                margin: EdgeInsets.zero,
+                                child: SlidingNavList(
+                                  shrinkWrap: true,
+                                  itemCount: entries.length,
+                                  selectedIndex: entries.indexWhere(
+                                    (AppEntry e) => e.id == selected?.id,
+                                  ),
+                                  itemBuilder:
+                                      (
+                                        BuildContext context,
+                                        int index,
+                                        Key key,
+                                      ) {
+                                        final AppEntry entry = entries[index];
+                                        return GestureDetector(
+                                          key: key,
+                                          onSecondaryTapDown:
+                                              (TapDownDetails details) =>
+                                                  _showEntryMenu(
+                                                    context,
+                                                    app,
+                                                    entry,
+                                                    details.globalPosition,
+                                                  ),
+                                          child: NavListTile(
+                                            selected: entry.id == selected?.id,
+                                            showIndicator: false,
+                                            onPressed: () =>
+                                                app.selectLibraryEntry(
+                                                  entry.id,
+                                                ),
+                                            title: entry.name,
+                                            subtitle: entry.subtitle.isEmpty
+                                                ? _kindLabel(entry.kind)
+                                                : entry.subtitle,
+                                            trailing: app.launcher.isRunning(
+                                                  entry.id,
+                                                )
+                                                ? ValueListenableBuilder<int>(
+                                                    valueListenable:
+                                                        app
+                                                            .launcher
+                                                            .elapsedSeconds,
+                                                    builder: (
+                                                      BuildContext context,
+                                                      int seconds,
+                                                      Widget? _,
+                                                    ) {
+                                                      return MetaPill(
+                                                        label: formatClock(
+                                                          Duration(
+                                                            seconds: seconds,
+                                                          ),
+                                                        ),
+                                                        color:
+                                                            FluentColors.of(
+                                                              context,
+                                                            ).palette.success,
+                                                        dense: true,
+                                                      );
+                                                    },
+                                                  )
+                                                : null,
+                                          ),
+                                        );
+                                      },
+                                ),
+                              ),
                             ),
-                            itemBuilder:
-                                (BuildContext context, int index, Key key) {
-                                  final AppEntry entry = entries[index];
-                                  return GestureDetector(
-                                    key: key,
-                                    onSecondaryTapDown:
-                                        (TapDownDetails details) =>
-                                            _showEntryMenu(
-                                              context,
-                                              app,
-                                              entry,
-                                              details.globalPosition,
-                                            ),
-                                    child: NavListTile(
-                                      selected: entry.id == selected?.id,
-                                      showIndicator: false,
-                                      onPressed: () =>
-                                          app.selectLibraryEntry(entry.id),
-                                      title: entry.name,
-                                      subtitle: entry.subtitle.isEmpty
-                                          ? _kindLabel(entry.kind)
-                                          : entry.subtitle,
-                                      trailing: app.launcher.isRunning(entry.id)
-                                          ? MetaPill(
-                                              label: formatClock(
-                                                app.launcher.elapsed,
-                                              ),
-                                              color: FluentColors.of(context)
-                                                  .palette
-                                                  .success,
-                                              dense: true,
-                                            )
-                                          : null,
-                                    ),
-                                  );
-                                },
                           ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: selected == null
-                          ? const SizedBox.shrink()
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: <Widget>[
-                                _DetailTabBar(
-                                  selected: _detailTab,
-                                  onSelected: (LibraryDetailTab tab) =>
-                                      setState(() => _detailTab = tab),
-                                ),
-                                Expanded(
-                                  // Instant replace + single entrance: the
-                                  // detail panels are heavy, cross-fading two
-                                  // of them doubles layout work per switch.
-                                  child: KeyedSubtree(
-                                    key: ValueKey<String>(
-                                      '${selected.id}-${_detailTab.name}',
+                        Expanded(
+                          child: selected == null
+                              ? const SizedBox.shrink()
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: <Widget>[
+                                    _DetailTabBar(
+                                      selected: _detailTab,
+                                      onSelected: (LibraryDetailTab tab) =>
+                                          setState(() => _detailTab = tab),
                                     ),
-                                    child: PageBodyEntrance(
-                                      duration: const Duration(
-                                        milliseconds: 220,
+                                    Expanded(
+                                      // Keyed by tab only: switching entries
+                                      // updates the panel in place (no remount,
+                                      // no replayed entrance); switching tabs
+                                      // still swaps the panel with one
+                                      // entrance. Cross-fading two heavy
+                                      // panels doubles layout work instead.
+                                      child: KeyedSubtree(
+                                        key: ValueKey<String>(_detailTab.name),
+                                        child: PageBodyEntrance(
+                                          duration: const Duration(
+                                            milliseconds: 220,
+                                          ),
+                                          offset: 0.03,
+                                          child: _detailContent(selected, app),
+                                        ),
                                       ),
-                                      offset: 0.03,
-                                      child: _detailContent(selected, app),
                                     ),
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                    ),
-                  ],
+                        ),
+                      ],
+                    );
+                  },
                 ),
         ),
       ),
@@ -202,28 +240,24 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Widget _detailContent(AppEntry entry, AppState app) {
-    final ValueKey<String> key = ValueKey<String>(
-      '${entry.id}-${_detailTab.name}',
-    );
     switch (_detailTab) {
       case LibraryDetailTab.overview:
         return _InstanceHero(
-          key: key,
           entry: entry,
           app: app,
           onContextMenu: (Offset position) =>
               _showEntryMenu(context, app, entry, position),
         );
       case LibraryDetailTab.loader:
-        return LoaderPanel(key: key, entry: entry, app: app);
+        return LoaderPanel(entry: entry, app: app);
       case LibraryDetailTab.mods:
-        return ModsPanel(key: key, entry: entry, app: app);
+        return ModsPanel(entry: entry, app: app);
       case LibraryDetailTab.worlds:
-        return WorldsPanel(key: key, entry: entry, app: app);
+        return WorldsPanel(entry: entry, app: app);
       case LibraryDetailTab.skins:
-        return SkinsPanel(key: key, app: app);
+        return SkinsPanel(app: app);
       case LibraryDetailTab.crashes:
-        return CrashPanel(key: key, entry: entry, app: app);
+        return CrashPanel(entry: entry, app: app);
     }
   }
 
@@ -538,7 +572,6 @@ class _DetailTabBar extends StatelessWidget {
 
 class _InstanceHero extends StatelessWidget {
   const _InstanceHero({
-    super.key,
     required this.entry,
     required this.app,
     required this.onContextMenu,
@@ -587,10 +620,12 @@ class _InstanceHero extends StatelessWidget {
           ),
           Align(
             alignment: Alignment.bottomCenter,
-            child: Acrylic(
-              tint: Colors.black,
-              tintAlpha: 0.48,
-              blurAmount: 32,
+            // A solid scrim instead of Acrylic: the info board sits inside the
+            // entrance animation, and a BackdropFilter there re-sampled the
+            // whole hero every animation frame. The cover's own bottom scrim
+            // makes the solid panel read nearly identically.
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.58),
               child: Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(28, 22, 28, 24),
                 child: Column(
@@ -713,23 +748,19 @@ class _InstanceHero extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (starting || running) ...<Widget>[
+                    if (starting) ...<Widget>[
                       const SizedBox(height: 12),
                       SizedBox(
                         width: 280,
-                        child: ProgressBar(
-                          value: starting
-                              ? (app.launchFraction > 0
-                                    ? app.launchFraction
-                                    : null)
+                        child: HclProgressBar(
+                          fraction: app.launchFraction > 0
+                              ? app.launchFraction
                               : null,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        starting
-                            ? (app.launchStage ?? '启动中…')
-                            : '运行 ${formatPlaytime(app.launcher.elapsed.inMilliseconds)}',
+                        app.launchStage ?? '启动中…',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -750,14 +781,6 @@ class _InstanceHero extends StatelessWidget {
                           height: 1.55,
                         ),
                       ),
-                    const SizedBox(height: 4),
-                    Text(
-                      running ? '停止后写入会话记录。' : '右键打开条目菜单。',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.48),
-                        fontSize: 10.5,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -819,7 +842,7 @@ class _HeroStat extends StatelessWidget {
   }
 }
 
-class _HeroBackdrop extends StatelessWidget {
+class _HeroBackdrop extends StatefulWidget {
   const _HeroBackdrop({
     required this.entry,
     required this.settings,
@@ -829,21 +852,60 @@ class _HeroBackdrop extends StatelessWidget {
   final AppEntry entry;
   final AppSettings settings;
 
-  /// Official Minecraft key art downloaded by [CoverArtService].
+  /// Official Minecraft key art downloaded by [CoverArtService]. The service
+  /// already proved the file exists; no re-stat from build.
   final String? coverPath;
 
   @override
+  State<_HeroBackdrop> createState() => _HeroBackdropState();
+}
+
+class _HeroBackdropState extends State<_HeroBackdrop> {
+  // The modpack background path is probed asynchronously and cached per
+  // path: sync existsSync from build put disk I/O on the UI thread.
+  String? _checkedPath;
+  bool _hasBackground = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _probeBackground();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroBackdrop oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.settings.backgroundImagePath !=
+        widget.settings.backgroundImagePath) {
+      _probeBackground();
+    }
+  }
+
+  Future<void> _probeBackground() async {
+    final String? path = widget.settings.backgroundImagePath;
+    final bool exists = path != null && await File(path).exists();
+    if (!mounted || (path == _checkedPath && exists == _hasBackground)) {
+      return;
+    }
+    setState(() {
+      _checkedPath = path;
+      _hasBackground = exists;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final Color base = Color(entry.iconColorValue);
-    if (entry.kind == AppKind.utility) {
+    final Color base = Color(widget.entry.iconColorValue);
+    if (widget.entry.kind == AppKind.utility) {
       return const ColoredBox(color: Colors.black);
     }
-    if (entry.kind == AppKind.modpack) {
-      final String? image = settings.backgroundImagePath;
-      if (image != null && File(image).existsSync()) {
+    if (widget.entry.kind == AppKind.modpack) {
+      final String? image = widget.settings.backgroundImagePath;
+      if (image != null && _hasBackground) {
         return Image.file(
           File(image),
           fit: BoxFit.cover,
+          cacheWidth: 1024,
           filterQuality: FilterQuality.medium,
           errorBuilder: (
             BuildContext context,
@@ -854,20 +916,20 @@ class _HeroBackdrop extends StatelessWidget {
       }
       return _gradientWithWatermark(base);
     }
-    if (entry.kind == AppKind.minecraft) {
-      final String? cover = coverPath;
+    if (widget.entry.kind == AppKind.minecraft) {
+      final String? cover = widget.coverPath;
       return Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          if (cover != null && File(cover).existsSync())
+          if (cover != null)
             _OfficialCover(path: cover)
           else
-            _bannerArt(const Color(0xFF2F6B3C), entry.id.hashCode),
+            _bannerArt(const Color(0xFF2F6B3C), widget.entry.id.hashCode),
           Positioned(
             right: -20,
             bottom: 180,
             child: Text(
-              entry.minecraftVersion ?? 'Minecraft',
+              widget.entry.minecraftVersion ?? 'Minecraft',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.08),
                 fontSize: 150,
@@ -892,7 +954,7 @@ class _HeroBackdrop extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'JAVA EDITION · ${entry.minecraftVersion ?? ''}',
+                  'JAVA EDITION · ${widget.entry.minecraftVersion ?? ''}',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.16),
                     fontSize: 11,
@@ -929,7 +991,7 @@ class _HeroBackdrop extends StatelessWidget {
   }
 
   Widget _gradientWithWatermark(Color base) {
-    return _bannerArt(base, entry.id.hashCode);
+    return _bannerArt(base, widget.entry.id.hashCode);
   }
 }
 
@@ -949,6 +1011,9 @@ class _OfficialCover extends StatelessWidget {
           File(path),
           fit: BoxFit.cover,
           alignment: Alignment.topCenter,
+          // The source key art is 864×864; decode it at display scale
+          // instead of pushing the full bitmap into a texture.
+          cacheWidth: 1024,
           filterQuality: FilterQuality.medium,
           errorBuilder: (
             BuildContext context,

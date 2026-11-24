@@ -17,7 +17,6 @@ class StatisticsPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppState app = AppScope.of(context);
-    final FluentPalette palette = FluentColors.of(context).palette;
     final StatsSummary summary = app.statsSummary;
     final StatsFilter filter = app.statsFilter;
     final bool empty = summary.sessionCount == 0;
@@ -214,16 +213,6 @@ class StatisticsPane extends StatelessWidget {
             title: '最近 14 天',
             subtitle: '每日累计运行时长',
             child: DurationLineChart(daily: summary.byDay, height: 180),
-          ),
-          const SizedBox(height: 14),
-          const SettingsBanner(
-            message: '统计来自已结束的会话记录。关闭演示数据后，只显示实际运行过的条目。',
-            icon: Icons.analytics_outlined,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '数据文件：${app.paths.sessionsFile.path}',
-            style: TextStyle(color: palette.textTertiary, fontSize: 10),
           ),
         ],
       ],

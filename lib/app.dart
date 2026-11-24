@@ -24,6 +24,15 @@ class _HclAppState extends State<HclApp> {
   Timer? _splashTimer;
   late bool _showSplash = widget.showSplash;
 
+  /// The theme only depends on theme mode + accent color. FluentThemeData has
+  /// no operator ==, so rebuilding it per build handed every dependent widget
+  /// a fresh instance and re-themed the whole app on every state tick; reuse
+  /// the same instances until those two settings change.
+  AppThemeMode? _themeMode;
+  int? _accentColorValue;
+  FluentThemeData? _lightTheme;
+  FluentThemeData? _darkTheme;
+
   @override
   void initState() {
     super.initState();
@@ -43,19 +52,26 @@ class _HclAppState extends State<HclApp> {
   @override
   Widget build(BuildContext context) {
     final AppState app = AppScope.of(context);
+    if (_themeMode != app.settings.themeMode ||
+        _accentColorValue != app.settings.accentColorValue) {
+      _themeMode = app.settings.themeMode;
+      _accentColorValue = app.settings.accentColorValue;
+      _lightTheme = buildFluentTheme(
+        settings: app.settings,
+        platformBrightness: Brightness.light,
+      );
+      _darkTheme = buildFluentTheme(
+        settings: app.settings,
+        platformBrightness: Brightness.dark,
+      );
+    }
     return FluentApp(
       title: AppInfo.name,
       debugShowCheckedModeBanner: false,
       locale: const Locale('zh'),
       supportedLocales: const <Locale>[Locale('zh'), Locale('en', 'US')],
-      theme: buildFluentTheme(
-        settings: app.settings,
-        platformBrightness: Brightness.light,
-      ),
-      darkTheme: buildFluentTheme(
-        settings: app.settings,
-        platformBrightness: Brightness.dark,
-      ),
+      theme: _lightTheme,
+      darkTheme: _darkTheme,
       themeMode: switch (app.settings.themeMode) {
         AppThemeMode.system => ThemeMode.system,
         AppThemeMode.light => ThemeMode.light,

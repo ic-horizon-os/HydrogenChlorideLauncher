@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
@@ -54,39 +53,27 @@ class DownloadProgress {
   const DownloadProgress({
     required this.completed,
     required this.total,
-    required this.completedOfPending,
-    required this.pendingTotal,
+    required this.inFlightCredit,
     required this.currentFile,
     required this.bytesDone,
     required this.bytesTotal,
   });
 
+  /// Files finished, including ones reused from disk — the same basis as
+  /// the `completed/total` detail so percentage and count never diverge.
   final int completed;
   final int total;
 
-  /// Files downloaded this run, excluding ones reused from disk.
-  final int completedOfPending;
-
-  /// Files that actually needed downloading.
-  final int pendingTotal;
+  /// Partial credit (in file units) for bytes already streamed by workers
+  /// still running, so the bar keeps moving between file completions.
+  final double inFlightCredit;
   final String currentFile;
   final int bytesDone;
   final int bytesTotal;
 
-  /// Byte-weighted when sizes are known, floored by the file count so a
-  /// batch with many unknown sizes still marches steadily to 100% instead
-  /// of stalling near zero.
   double get fraction {
-    double byBytes = 0;
-    if (bytesTotal > 0) byBytes = bytesDone / bytesTotal;
-    double byCount = 0;
-    if (pendingTotal > 0) {
-      byCount = completedOfPending / pendingTotal;
-    } else if (total > 0) {
-      // Nothing needed downloading; the batch is done.
-      byCount = 1;
-    }
-    return math.max(byBytes, byCount).clamp(0.0, 1.0);
+    if (total <= 0) return 1;
+    return ((completed + inFlightCredit) / total).clamp(0.0, 1.0);
   }
 }
 
@@ -102,7 +89,7 @@ class DownloadManager {
   }) : _client = client ?? http.Client();
 
   static const String userAgent =
-      'HydrogenChlorideLauncher/0.1.0-alpha.1 (github.com/HyaLab-Soft/HydrogenChlorideLauncher)';
+      'HydrogenChlorideLauncher/0.1.0-alpha.3 (github.com/ic-horizon-os/HydrogenChlorideLauncher)';
 
   /// minecraft.net sits behind Akamai, which stalls connections that carry an
   /// unrecognised crawler-looking User-Agent. Use a browser UA for that host
@@ -146,7 +133,6 @@ class DownloadManager {
 
     int completed = reused;
     final int total = requests.length;
-    final int pendingTotal = pending.length;
     int bytesDone = 0;
     final int bytesTotal = pending.fold(
       0,
@@ -169,15 +155,19 @@ class DownloadManager {
       }
       lastEmit = now;
       int inFlightBytes = 0;
-      for (final int written in inFlight.values) {
+      double credit = 0;
+      inFlight.forEach((DownloadRequest request, int written) {
         inFlightBytes += written;
-      }
+        final int? size = request.size;
+        if (size != null && size > 0) {
+          credit += (written / size).clamp(0.0, 1.0);
+        }
+      });
       onProgress?.call(
         DownloadProgress(
           completed: completed,
           total: total,
-          completedOfPending: completed - reused,
-          pendingTotal: pendingTotal,
+          inFlightCredit: credit,
           currentFile: file,
           bytesDone: bytesDone + inFlightBytes,
           bytesTotal: bytesTotal,
@@ -195,11 +185,16 @@ class DownloadManager {
         if (request == null) return;
         try {
           int written = 0;
-          await _download(request, (int chunkWritten) {
-            written = chunkWritten;
-            inFlight[request] = chunkWritten;
-            emit(file: request.name);
-          });
+          await _download(
+            request,
+            (int chunkWritten) {
+              written = chunkWritten;
+              inFlight[request] = chunkWritten;
+              emit(file: request.name);
+            },
+            isCancelled: isCancelled,
+          );
+          if (isCancelled?.call() ?? false) return;
           // Files without metadata size still contribute their real byte
           // count, so the byte fraction does not stall when some sizes are
           // unknown.
@@ -279,8 +274,9 @@ class DownloadManager {
 
   Future<void> _download(
     DownloadRequest request,
-    void Function(int written) onBytes,
-  ) async {
+    void Function(int written) onBytes, {
+    bool Function()? isCancelled,
+  }) async {
     await Directory(p.dirname(request.destination)).create(recursive: true);
     final File part = File('${request.destination}.part');
     Object? lastError;
@@ -323,6 +319,11 @@ class DownloadManager {
               sink.add(chunk);
               written += chunk.length;
               onBytes(written);
+              if (isCancelled?.call() ?? false) {
+                // Stop streaming this file; the .part file stays and a
+                // later run resumes it via Range.
+                return;
+              }
             }
           } finally {
             await iterator.cancel();

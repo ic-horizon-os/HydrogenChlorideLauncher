@@ -56,37 +56,10 @@ Future<void> showAboutHclDialog(BuildContext context) {
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: <Widget>[
-                      MetaPill(label: 'UI 原型', dense: true),
-                      MetaPill(label: 'Windows / Linux', dense: true),
-                      MetaPill(label: 'Fluent Design', dense: true),
-                    ],
-                  ),
                 ],
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: palette.warning.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(FluentTokens.radius),
-            border: Border.all(color: palette.warning.withValues(alpha: 0.25)),
-          ),
-          child: Text(
-            AppInfo.demoNotice,
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 12,
-              height: 1.6,
-            ),
-          ),
         ),
         const SizedBox(height: 18),
         Text(
@@ -105,34 +78,6 @@ Future<void> showAboutHclDialog(BuildContext context) {
             fontSize: 12,
             height: 1.65,
           ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          '技术栈',
-          style: TextStyle(
-            color: palette.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: const <Widget>[
-            MetaPill(
-              label: 'Flutter 3.47',
-              icon: Icons.flutter_dash,
-              dense: true,
-            ),
-            MetaPill(label: 'Dart 3.13', icon: Icons.code, dense: true),
-            MetaPill(label: '纯 Dart 核心', icon: Icons.memory, dense: true),
-            MetaPill(
-              label: 'GTK 3',
-              icon: Icons.desktop_windows_outlined,
-              dense: true,
-            ),
-          ],
         ),
       ],
     ),

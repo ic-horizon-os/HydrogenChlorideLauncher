@@ -231,7 +231,11 @@ class AppState extends ChangeNotifier {
   bool settingsOpen = false;
   SettingsSection settingsSection = SettingsSection.account;
 
-  String? librarySelectionId;
+  /// Selected library entry id. A plain ValueNotifier instead of a full
+  /// [notifyListeners]: switching selection is page-local and must not
+  /// rebuild the whole shell.
+  final ValueNotifier<String?> librarySelection = ValueNotifier<String?>(null);
+
   String? communitySourceId;
   String? communityArticleId;
   String? lastError;
@@ -241,8 +245,25 @@ class AppState extends ChangeNotifier {
   /// Long-running installs shown in the Steam-style bottom bar.
   final List<AppTask> tasks = <AppTask>[];
 
+  /// Inline progress surfaces (install dialogs, embedded forms) showing a
+  /// task's progress themselves. While any is attached the bottom bar stays
+  /// hidden, so one install never paints two bars; it returns as a global
+  /// fallback once every surface detaches.
+  int _inlineProgressSurfaces = 0;
+
+  void suspendTaskBar() {
+    _inlineProgressSurfaces++;
+    notifyListeners();
+  }
+
+  void resumeTaskBar() {
+    if (_inlineProgressSurfaces > 0) _inlineProgressSurfaces--;
+    notifyListeners();
+  }
+
   /// Active or recently finished task driving the bottom progress bar.
   AppTask? get activeTask {
+    if (_inlineProgressSurfaces > 0) return null;
     for (final AppTask task in tasks.reversed) {
       if (task.running) return task;
     }
@@ -288,13 +309,14 @@ class AppState extends ChangeNotifier {
   bool _disposed = false;
 
   void _childChanged() {
+    _visibleEntriesCache = null;
     if (!_disposed) notifyListeners();
   }
 
   void _selectDefaults() {
     final List<AppEntry> entries = visibleEntries;
     if (entries.isNotEmpty) {
-      librarySelectionId ??= entries.first.id;
+      librarySelection.value ??= entries.first.id;
     }
     final List<FeedSource> sources = visibleFeedSources;
     if (sources.isNotEmpty) {
@@ -320,7 +342,14 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// Sorted visible library entries, cached until the library (or the demo
+  /// filter) changes. A library-page build used to re-copy and re-sort this
+  /// list several times per frame.
+  List<AppEntry>? _visibleEntriesCache;
+
   List<AppEntry> get visibleEntries {
+    final List<AppEntry>? cached = _visibleEntriesCache;
+    if (cached != null) return cached;
     final List<AppEntry> entries = library.entries
         .where((AppEntry entry) => settings.demoData || !entry.isDemo)
         .toList(growable: false);
@@ -338,14 +367,16 @@ class AppState extends ChangeNotifier {
       }
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
+    _visibleEntriesCache = sorted;
     return sorted;
   }
 
   AppEntry? get selectedEntry {
     final List<AppEntry> entries = visibleEntries;
     if (entries.isEmpty) return null;
+    final String? selectedId = librarySelection.value;
     for (final AppEntry entry in entries) {
-      if (entry.id == librarySelectionId) return entry;
+      if (entry.id == selectedId) return entry;
     }
     return entries.first;
   }
@@ -443,8 +474,7 @@ class AppState extends ChangeNotifier {
   }
 
   void selectLibraryEntry(String id) {
-    librarySelectionId = id;
-    notifyListeners();
+    librarySelection.value = id;
   }
 
   void selectFeedSource(String id) {
@@ -478,14 +508,15 @@ class AppState extends ChangeNotifier {
         await library.removeDemoEntries();
         await stats.removeDemoSessions();
         await feeds.removeDemoSources();
-        if (librarySelectionId != null &&
-            library.byId(librarySelectionId!) == null) {
-          librarySelectionId = null;
+        final String? selectedId = librarySelection.value;
+        if (selectedId != null && library.byId(selectedId) == null) {
+          librarySelection.value = null;
         }
       }
       await plugins.load(includeDemo: settings.demoData);
       _selectDefaults();
     }
+    _visibleEntriesCache = null;
     notifyListeners();
   }
 
@@ -579,6 +610,7 @@ class AppState extends ChangeNotifier {
   InstallHostAdapter _moduleContext(
     AppTask task, {
     void Function(String stage, double fraction, String detail)? onProgress,
+    bool Function()? isCancelled,
     required Future<String?> Function(String version) downloader,
     Future<String?> Function(String loader, String game, String build)?
     loader,
@@ -586,6 +618,7 @@ class AppState extends ChangeNotifier {
   }) {
     return InstallHostAdapter(
       root: minecraftRoot,
+      isCancelled: isCancelled,
       onProgress: (String stage, double fraction, String detail) {
         task.update(stage: stage, detail: detail, fraction: fraction);
         onProgress?.call(stage, fraction, detail);
@@ -595,6 +628,14 @@ class AppState extends ChangeNotifier {
           loader ?? (String _, String _, String _) async => null,
       installModpackHandler: modpack ?? (String _, String _) async => null,
     );
+  }
+
+  /// Ends a task the user cancelled: downloads already stopped, so the task
+  /// disappears instead of lingering as a failed bar.
+  void _cancelTask(AppTask task) {
+    task.running = false;
+    tasks.remove(task);
+    notifyListeners();
   }
 
   Future<void> scanJava() async {
@@ -816,7 +857,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> addEntry(AppEntry entry) async {
     await library.add(entry);
-    librarySelectionId = entry.id;
+    librarySelection.value = entry.id;
     notifyListeners();
   }
 
@@ -828,8 +869,8 @@ class AppState extends ChangeNotifier {
   Future<void> removeEntry(String id) async {
     if (launcher.activeApp?.id == id) return;
     await library.remove(id);
-    if (librarySelectionId == id) {
-      librarySelectionId = null;
+    if (librarySelection.value == id) {
+      librarySelection.value = null;
       _selectDefaults();
     }
     notifyListeners();
@@ -880,6 +921,7 @@ class AppState extends ChangeNotifier {
   Future<AppEntry?> installVersion(
     String versionId, {
     void Function(String stage, double fraction, String detail)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     lastError = null;
     notifyListeners();
@@ -888,6 +930,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return null;
     }
+    bool cancelled() => isCancelled?.call() ?? false;
     final AppTask task = beginTask('安装 Minecraft $versionId');
     try {
       final String? moduleError = await plugin.runInstall(
@@ -895,24 +938,33 @@ class AppState extends ChangeNotifier {
           capability: plugin.InstallCapability.vanilla,
           version: versionId,
         ),
-        _moduleContext(task, onProgress: onProgress, downloader: (String v) async {
-          await vanillaInstaller.installVanilla(
-            v,
-            onProgress: (InstallProgress progress) {
-              // The module only reports coarse phase boundaries (2% → 100%);
-              // forward the installer's fine-grained progress to both the
-              // bottom task bar and the calling dialog.
-              task.update(
-                stage: progress.stage,
-                detail: progress.detail,
-                fraction: progress.fraction,
-              );
-              onProgress?.call(progress.stage, progress.fraction, progress.detail);
-            },
-          );
-          return null;
-        }),
+        _moduleContext(
+          task,
+          isCancelled: cancelled,
+          onProgress: onProgress,
+          downloader: (String v) async {
+            await vanillaInstaller.installVanilla(
+              v,
+              isCancelled: cancelled,
+              onProgress: (InstallProgress progress) {
+                // The module only reports coarse phase boundaries (2% → 100%);
+                // forward the installer's fine-grained progress to both the
+                // bottom task bar and the calling dialog.
+                task.update(
+                  stage: progress.stage,
+                  detail: progress.detail,
+                  fraction: progress.fraction,
+                );
+                onProgress?.call(progress.stage, progress.fraction, progress.detail);
+              },
+            );
+            return null;
+          },
+        ),
       );
+      if (cancelled()) {
+        throw const InstallCancelled();
+      }
       if (moduleError != null) {
         throw InstallException(moduleError);
       }
@@ -932,6 +984,9 @@ class AppState extends ChangeNotifier {
       finishTask(task);
       notifyListeners();
       return created;
+    } on InstallCancelled {
+      _cancelTask(task);
+      return null;
     } on Object catch (error) {
       lastError = error.toString();
       finishTask(task, success: false, error: lastError);
@@ -947,6 +1002,7 @@ class AppState extends ChangeNotifier {
     String gameVersion,
     String loaderVersion, {
     void Function(String stage, double fraction, String detail)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     if (_launching) return null;
     _launching = true;
@@ -958,6 +1014,7 @@ class AppState extends ChangeNotifier {
       return null;
     }
     final AppTask task = beginTask('安装 ${loader.label} $gameVersion');
+    bool cancelled() => isCancelled?.call() ?? false;
     try {
       JavaRuntime? java = javaManagerFor(minecraftRoot).pickInstalled(
         javaRuntimes,
@@ -974,6 +1031,7 @@ class AppState extends ChangeNotifier {
         ),
         _moduleContext(
           task,
+          isCancelled: cancelled,
           onProgress: onProgress,
           downloader: (String _) async => null,
           loader: (String _, String _, String _) async {
@@ -982,6 +1040,7 @@ class AppState extends ChangeNotifier {
               gameVersion,
               loaderVersion,
               javaExecutable: java?.path,
+              isCancelled: cancelled,
               onProgress: (InstallProgress progress) {
                 task.update(
                   stage: progress.stage,
@@ -995,6 +1054,9 @@ class AppState extends ChangeNotifier {
           },
         ),
       );
+      if (cancelled()) {
+        throw const InstallCancelled();
+      }
       if (moduleError != null) {
         throw InstallException(moduleError);
       }
@@ -1018,6 +1080,9 @@ class AppState extends ChangeNotifier {
       finishTask(task);
       notifyListeners();
       return created;
+    } on InstallCancelled {
+      _cancelTask(task);
+      return null;
     } on Object catch (error) {
       lastError = error.toString();
       finishTask(task, success: false, error: lastError);
@@ -1045,12 +1110,12 @@ class AppState extends ChangeNotifier {
     for (final AppEntry existing in library.entries) {
       if (existing.id == entry.id) {
         await library.update(entry);
-        librarySelectionId = entry.id;
+        librarySelection.value = entry.id;
         return entry;
       }
     }
     await library.add(entry);
-    librarySelectionId = entry.id;
+    librarySelection.value = entry.id;
     return entry;
   }
 
@@ -1217,6 +1282,7 @@ class AppState extends ChangeNotifier {
     installModules.removeListener(_childChanged);
     launcher.removeListener(_childChanged);
     launcher.dispose();
+    librarySelection.dispose();
     library.dispose();
     stats.dispose();
     feeds.dispose();

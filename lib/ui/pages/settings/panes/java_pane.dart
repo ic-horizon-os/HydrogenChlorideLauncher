@@ -92,10 +92,6 @@ class _JavaPaneState extends State<JavaPane> {
           ),
         ),
         const SizedBox(height: 16),
-        const SettingsBanner(
-          message: '仅保存配置，不分配内存或启动 Java。扫描与哈希均为纯 Dart 实现。',
-        ),
-        const SizedBox(height: 16),
         SettingsCard(
           title: '已发现的 Java 运行时',
           description: '扫描 JAVA_HOME、PATH 和常见安装目录。',

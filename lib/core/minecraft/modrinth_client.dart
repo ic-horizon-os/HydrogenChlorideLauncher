@@ -82,6 +82,12 @@ class ModrinthClient {
         BrowseCategory.loader: 'mod',
       };
 
+  /// Same category, query, filter and page within this window returns the
+  /// cached result: bouncing between browse sections must not re-hit the API.
+  static const Duration _searchCacheTtl = Duration(seconds: 45);
+  final Map<String, (DateTime, List<BrowseItem>)> _searchCache =
+      <String, (DateTime, List<BrowseItem>)>{};
+
   /// Maps a Modrinth search response onto [BrowseItem]s.
   List<BrowseItem> mapSearch(
     Map<String, dynamic> json,
@@ -133,10 +139,21 @@ class ModrinthClient {
         ]),
       },
     );
+    final String cacheKey = uri.toString();
+    final (DateTime, List<BrowseItem>)? cached = _searchCache[cacheKey];
+    if (cached != null &&
+        DateTime.now().difference(cached.$1) < _searchCacheTtl) {
+      return cached.$2;
+    }
     final Map<String, dynamic> json = await _downloader.fetchJson(
-      uri.toString(),
+      cacheKey,
     );
-    return mapSearch(json, category);
+    final List<BrowseItem> items = mapSearch(json, category);
+    if (_searchCache.length >= 24) {
+      _searchCache.clear();
+    }
+    _searchCache[cacheKey] = (DateTime.now(), items);
+    return items;
   }
 
   BrowseItem _mapHit(Map<String, dynamic> json, BrowseCategory category) {

@@ -70,7 +70,6 @@ class LaunchService extends ChangeNotifier {
   AppEntry? _activeApp;
   DateTime? _startedAt;
   Process? _process;
-  Duration _elapsed = Duration.zero;
   Timer? _ticker;
   bool _starting = false;
   bool _disposed = false;
@@ -79,9 +78,14 @@ class LaunchService extends ChangeNotifier {
   String? _logPath;
   String? _launchError;
 
+  /// Whole seconds played by the running process. The per-second ticker
+  /// updates only this notifier — forwarding it through [notifyListeners]
+  /// used to rebuild the entire shell once a second while a game ran.
+  final ValueNotifier<int> elapsedSeconds = ValueNotifier<int>(0);
+
   AppEntry? get activeApp => _activeApp;
   DateTime? get startedAt => _startedAt;
-  Duration get elapsed => _elapsed;
+  Duration get elapsed => Duration(seconds: elapsedSeconds.value);
   bool get isStarting => _starting;
   int? get lastExitCode => _lastExitCode;
   String? get logPath => _logPath;
@@ -131,7 +135,7 @@ class LaunchService extends ChangeNotifier {
     _process = process;
     _activeApp = entry;
     _startedAt = _clock();
-    _elapsed = Duration.zero;
+    elapsedSeconds.value = 0;
     _starting = false;
     _ticker = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
       final DateTime? started = _startedAt;
@@ -139,8 +143,7 @@ class LaunchService extends ChangeNotifier {
         timer.cancel();
         return;
       }
-      _elapsed = _clock().difference(started);
-      notifyListeners();
+      elapsedSeconds.value = _clock().difference(started).inSeconds;
     });
     notifyListeners();
 
@@ -292,7 +295,7 @@ class LaunchService extends ChangeNotifier {
     _process = null;
     _activeApp = null;
     _startedAt = null;
-    _elapsed = Duration.zero;
+    elapsedSeconds.value = 0;
     _starting = false;
     _stopping = false;
     if (_disposed) return;
@@ -343,6 +346,7 @@ class LaunchService extends ChangeNotifier {
     _disposed = true;
     _ticker?.cancel();
     _ticker = null;
+    elapsedSeconds.dispose();
     super.dispose();
   }
 }

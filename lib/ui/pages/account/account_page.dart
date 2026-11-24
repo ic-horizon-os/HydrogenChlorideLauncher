@@ -4,11 +4,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/material.dart' show Icons;
 
-import '../../../core/constants.dart';
 import '../../../core/models/account.dart';
 import '../../../core/models/app_entry.dart';
 import '../../../core/models/app_settings.dart';
-import '../../../core/services/platform_actions.dart';
 import '../../../core/services/skin_service.dart';
 import '../../../core/utils/format.dart';
 import '../../../state/app_scope.dart';
@@ -25,7 +23,6 @@ class AccountPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppState app = AppScope.of(context);
-    final FluentPalette palette = FluentColors.of(context).palette;
     final MinecraftAccount? account = app.auth.account;
     final int totalMs = app.visibleEntries.fold<int>(
       0,
@@ -40,20 +37,7 @@ class AccountPage extends StatelessWidget {
           Row(
             children: <Widget>[
               Text('账户', style: FluentTheme.of(context).typography.titleLarge),
-              const Spacer(),
-              if (account != null)
-                MetaPill(
-                  label: '已登录',
-                  icon: Icons.verified_user_outlined,
-                  color: palette.success,
-                ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Microsoft 账户用于 Minecraft 正版登录。未登录时，'
-            '库中的 Minecraft 与整合包会被禁止启动。',
-            style: TextStyle(color: palette.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 20),
           PageBodyEntrance(
@@ -118,93 +102,11 @@ class AccountPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 _SkinCard(app: app),
-                const SizedBox(height: 18),
-                GlassPanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Icon(
-                            FluentIcons.info,
-                            size: 15,
-                            color: palette.textSecondary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '登录说明',
-                            style: TextStyle(
-                              color: palette.textPrimary,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '使用微软 OAuth 2.0 设备码登录，内置公开 client ID，无需自行注册应用。'
-                        '令牌优先存入系统钥匙串，不可用时回退到本机配置文件。',
-                        style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 11.5,
-                          height: 1.65,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          FluentButton(
-                            label: '配置 client ID',
-                            icon: Icons.key_outlined,
-                            dense: true,
-                            onPressed: () =>
-                                app.openSettings(SettingsSection.account),
-                          ),
-                          FluentButton(
-                            label: '查看登录流程',
-                            icon: Icons.help_outline,
-                            dense: true,
-                            style: FluentButtonStyle.ghost,
-                            onPressed: () => _showLoginGuide(context),
-                          ),
-                          FluentButton(
-                            label: '开发者文档',
-                            icon: Icons.open_in_new,
-                            dense: true,
-                            style: FluentButtonStyle.ghost,
-                            onPressed: () =>
-                                PlatformActions.openExternal(AppInfo.githubUrl),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-
-  static Future<void> _showLoginGuide(BuildContext context) {
-    return showFluentDialog<void>(
-      context: context,
-      title: '如何配置微软登录',
-      description: '默认使用内置的公开 client ID，直接登录即可；也可以换成自建应用。',
-      width: 640,
-      child: const _LoginGuide(),
-      actions: <Widget>[
-        FluentButton(
-          label: '关闭',
-          style: FluentButtonStyle.primary,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
     );
   }
 }
@@ -335,26 +237,9 @@ class _AccountHero extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Text(
-                      account!.name,
-                      style: FluentTheme.of(context).typography.titleLarge,
-                    ),
-                    const SizedBox(width: 10),
-                    MetaPill(
-                      label: account!.ownsMinecraft
-                          ? 'Minecraft 已拥有'
-                          : '无 Minecraft 档案',
-                      icon: account!.ownsMinecraft
-                          ? Icons.check_circle_outline
-                          : Icons.warning_amber_rounded,
-                      color: account!.ownsMinecraft
-                          ? palette.success
-                          : palette.warning,
-                      dense: true,
-                    ),
-                  ],
+                Text(
+                  account!.name,
+                  style: FluentTheme.of(context).typography.titleLarge,
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -621,13 +506,6 @@ class _SkinCardState extends State<_SkinCard> {
                   icon: Icons.priority_high_rounded,
                   color: palette.warning,
                   dense: true,
-                )
-              else if (_authenticated)
-                MetaPill(
-                  label: '与账户同步',
-                  icon: Icons.check_circle_outline,
-                  color: palette.success,
-                  dense: true,
                 ),
             ],
           ),
@@ -849,81 +727,6 @@ class _QuickCardState extends State<_QuickCard> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _LoginGuide extends StatelessWidget {
-  const _LoginGuide();
-
-  @override
-  Widget build(BuildContext context) {
-    final FluentPalette palette = FluentColors.of(context).palette;
-    const List<(String, String)> steps = <(String, String)>[
-      (
-        '1. 创建应用',
-        '在 Azure Portal → App registrations 中新建注册，账户类型选择包含个人 Microsoft 账户。',
-      ),
-      (
-        '2. 允许公共客户端',
-        '在 Authentication 中把“Allow public client flows”设为 Yes。设备码流程不需要 client secret。',
-      ),
-      (
-        '3. 复制 client ID',
-        '复制 Application (client) ID，填入设置 → 登录信息，或设置环境变量 HCL_MS_CLIENT_ID。',
-      ),
-      ('4. 开始登录', '点击“开始设备码登录”，在浏览器打开 microsoft.com/link 并输入界面上的代码。'),
-      (
-        '5. 启动器链式验证',
-        '启动器会依次换取 Xbox Live、XSTS 与 Minecraft Services 令牌，并读取 Minecraft 档案。',
-      ),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        for (final (String, String) step in steps)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  step.$1,
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  step.$2,
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 11.5,
-                    height: 1.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: palette.warning.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(FluentTokens.radiusSmall),
-            border: Border.all(color: palette.warning.withValues(alpha: 0.22)),
-          ),
-          child: Text(
-            '不要把 client secret 提交到仓库。设备码流程只需要 client ID。',
-            style: TextStyle(
-              color: palette.textSecondary,
-              fontSize: 11,
-              height: 1.55,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

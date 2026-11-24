@@ -4,7 +4,7 @@ class AppInfo {
 
   static const String name = 'Hydrogen Chloride Launcher';
   static const String shortName = 'HCl Launcher';
-  static const String version = '0.1.0-alpha.2';
+  static const String version = '0.1.0-alpha.3';
   static const String channel = 'Alpha';
   static const String license = 'GPL-3.0-only';
   static const String githubUrl =
